@@ -9,6 +9,9 @@ import time
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "replace-with-a-secure-random-secret")  # Change in production
 
+from database_setup import main as setup_db
+setup_db()
+
 background_thread_started = False
 
 
