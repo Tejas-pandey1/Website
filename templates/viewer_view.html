@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viewer - {{ viewer.viewer_id }} - House Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <header class="header">
+        <nav class="nav-container">
+            <a href="/" class="logo">🏠 House Manager</a>
+            <div class="nav-links">
+                <span style="color: #6b7280;">Viewer: {{ viewer.viewer_id }}</span>
+                <a href="/" class="back-link">← Logout</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <h1>Your Data Access</h1>
+
+        <div class="card">
+            <h2>📋 {{ table.name }}</h2>
+            <p style="color: #6b7280; margin-bottom: 1rem;">You have access to view this specific row of data.</p>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for column in columns %}
+                    <tr>
+                        <td><strong>{{ column.name }}</strong></td>
+                        <td>{{ cell_values.get(row.id, {}).get(column.id, {}).value or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 House Manager. Secure data viewing portal.</p>
+        </div>
+    </footer>
+</body>
+</html>

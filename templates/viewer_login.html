@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viewer Login - House Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <header class="header">
+        <nav class="nav-container">
+            <a href="/" class="logo">🏠 House Manager</a>
+            <div class="nav-links">
+                <a href="/" class="back-link">← Back to Home</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <h1>Viewer Access</h1>
+
+        <div class="card" style="max-width: 400px; margin: 0 auto;">
+            <h2>Access Shared Data</h2>
+
+            <form action="/viewer_login" method="post">
+                <div class="form-group">
+                    <label for="viewer-id">Viewer ID</label>
+                    <input id="viewer-id" name="viewer_id" placeholder="Enter your viewer ID" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="viewer-password">Password</label>
+                    <input id="viewer-password" name="password" type="password" placeholder="Enter your password" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+            </form>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 House Manager. Secure viewer access portal.</p>
+        </div>
+    </footer>
+</body>
+</html>

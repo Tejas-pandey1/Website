@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>House Manager - Professional Database System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <header class="header">
+        <nav class="nav-container">
+            <a href="/" class="logo">🏠 House Manager</a>
+            <div class="nav-links">
+                <a href="/manager">Manager Login</a>
+                <a href="/viewer">Viewer Access</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <h1>Welcome to House Manager</h1>
+
+        <div class="card text-center">
+            <h2>Choose Your Role</h2>
+            <p class="mb-3">Select how you want to access the system:</p>
+
+            <div style="display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap;">
+                <a href="/manager" class="btn btn-primary" style="min-width: 200px;">
+                    👨‍💼 Manager
+                    <br><small>Create and manage tables</small>
+                </a>
+                <a href="/viewer" class="btn btn-secondary" style="min-width: 200px;">
+                    👁️ Viewer
+                    <br><small>Access shared data</small>
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 House Manager. Professional database management system.</p>
+        </div>
+    </footer>
+</body>
+</html>

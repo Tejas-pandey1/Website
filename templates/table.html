@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{table.name}} - House Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <header class="header">
+        <nav class="nav-container">
+            <a href="/" class="logo">🏠 House Manager</a>
+            <div class="nav-links">
+                <a href="/dashboard" class="back-link">← Dashboard</a>
+                <span style="color: #6b7280;">Table: {{table.name}}</span>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <h1>{{table.name}}</h1>
+
+        <div class="tab-nav">
+            <button class="tab-button active" data-tab="tab-add-column">Add Column</button>
+            <button class="tab-button" data-tab="tab-add-row">Add Row</button>
+            <button class="tab-button" data-tab="tab-data">Data</button>
+            <button class="tab-button" data-tab="tab-viewer">Viewer Access</button>
+            <button class="tab-button danger" data-tab="tab-danger">Danger Zone</button>
+        </div>
+
+        <section id="tab-add-column" class="tab-panel">
+            <div class="card">
+                <h2>➕ Add Column</h2>
+
+                <form action="/create_column/{{table.id}}" method="post">
+                    <div class="form-group">
+                        <label for="column-name">Column Name</label>
+                        <input id="column-name" name="name" placeholder="Column Name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="column-type">Column Type</label>
+                        <select id="column-type" name="type" required>
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                        </select>
+                    </div>
+
+                    <div id="edit-mode-container">
+                        <div class="form-group">
+                            <label for="edit-mode">Edit Mode</label>
+                            <select id="edit-mode" name="edit_mode">
+                                <option value="direct">Direct Edit</option>
+                                <option value="systematic">Systematic (increase/decrease)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="auto-settings" style="display: none;">
+                        <div class="auto-settings">
+                            <label>
+                                <input type="checkbox" name="auto_change" id="auto-change">
+                                Enable Auto-Change (Number only)
+                            </label>
+
+                            <div id="auto-options" style="display: none;">
+                                <div class="form-group">
+                                    <label for="time-interval">Time Interval</label>
+                                    <select id="time-interval" name="time_interval">
+                                        <option value="hour">Hour</option>
+                                        <option value="day" selected>Day</option>
+                                        <option value="week">Week</option>
+                                        <option value="month">Month</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Add Column</button>
+                </form>
+            </div>
+        </section>
+
+        <section id="tab-add-row" class="tab-panel hidden">
+            <div class="card">
+                <h2>📝 Add Row</h2>
+
+                <form action="/create_row/{{table.id}}" method="post">
+                    {% for column in columns %}
+                    <div class="form-group">
+                        <label for="col-{{column.id}}">{{column.name}}{% if column.type == 'number' %} (Number){% endif %}</label>
+                        <input id="col-{{column.id}}" name="col_{{column.id}}" type="{{ 'number' if column.type == 'number' else 'text' }}" placeholder="{{column.name}}">
+                        {% if column.type == 'number' and column.auto_change %}
+                        <div class="auto-options" style="margin-top: 0.5rem;">
+                            <div class="form-group">
+                                <label for="change-type-{{column.id}}">Change Type</label>
+                                <select id="change-type-{{column.id}}" name="change_type_{{column.id}}">
+                                    <option value="increase">Increase</option>
+                                    <option value="decrease">Decrease</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="change-amount-{{column.id}}">Change Amount</label>
+                                <input id="change-amount-{{column.id}}" name="change_amount_{{column.id}}" type="number" step="any" placeholder="e.g. 5">
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+
+                    <button type="submit" class="btn btn-primary">Add Row</button>
+                </form>
+            </div>
+        </section>
+
+        <section id="tab-data" class="tab-panel hidden">
+            <div class="card">
+                <h2>📊 Data</h2>
+
+                {% if rows and columns %}
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                {% for column in columns %}
+                                <th>{{column.name}}</th>
+                                {% endfor %}
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in rows %}
+                            <tr>
+                                <td>{{loop.index}}</td>
+                                {% for column in columns %}
+                                <td>
+                                    <form class="cell-form" action="/update_cell/{{row.id}}/{{column.id}}" method="post" style="display:inline-block;" data-row="{{row.id}}" data-column="{{column.id}}">
+                                        {% set cell_data = cell_values.get(row.id, {}).get(column.id, {}) %}
+                                        {% set existing_value = cell_data.value if cell_data else '' %}
+                                        {% set auto_change = cell_data.auto_change if cell_data else 0 %}
+                                        {% set change_type = cell_data.change_type if cell_data else 'increase' %}
+                                        {% set change_amount = cell_data.change_amount if cell_data else '' %}
+                                        {% set time_interval = cell_data.time_interval if cell_data else 'day' %}
+
+                                        {% if column.type == 'number' and column.edit_mode == 'systematic' %}
+                                        <div>
+                                            <input type="number" step="any" name="amount" placeholder="Amount" style="width: 5em;">
+                                            <select name="operation">
+                                                <option value="increase">+</option>
+                                                <option value="decrease">-</option>
+                                            </select>
+                                        </div>
+                                        <div>Current: {{ existing_value or '0' }}</div>
+                                        {% else %}
+                                        <input name="value" type="{{ 'number' if column.type == 'number' else 'text' }}" value="{{ existing_value }}" style="width: 8em;">
+                                        {% endif %}
+
+                                    </form>
+                                </td>
+                                {% endfor %}
+                                <td class="actions">
+                                    <button class="btn btn-success save-row" data-row="{{row.id}}">Save Row</button>
+                                    <button class="btn btn-danger delete-row" data-row="{{row.id}}">Delete</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center" style="padding: 2rem; color: #6b7280;">
+                    <p>No rows yet. Add a row above to start.</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section id="tab-viewer" class="tab-panel hidden">
+            <div class="card">
+                <h2>👁️ Viewer Access</h2>
+                <form action="/create_viewer" method="post">
+                    <input type="hidden" name="table_id" value="{{table.id}}">
+                    <div class="form-group">
+                        <label for="viewer-row">Row</label>
+                        <select id="viewer-row" name="row_id">
+                            {% for row in rows %}
+                            <option value="{{row.id}}">Row {{loop.index}}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="viewer-id">Viewer ID</label>
+                        <input id="viewer-id" name="viewer_id" placeholder="Viewer ID" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="viewer-password">Password</label>
+                        <input id="viewer-password" name="password" type="password" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Viewer</button>
+                </form>
+            </div>
+        </section>
+
+        <section id="tab-danger" class="tab-panel hidden">
+            <div class="card">
+                <h2>⚠️ Danger Zone</h2>
+                <form action="/delete_table/{{table.id}}" method="post" onsubmit="return confirm('Are you sure you want to delete this table? This action cannot be undone and will delete all data.');">
+                    <p style="color: #6b7280; margin-bottom: 1rem;">This will permanently delete the table and all its data.</p>
+                    <button type="submit" class="btn btn-danger">Delete Table</button>
+                </form>
+            </div>
+        </section>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 House Manager. Professional table management system.</p>
+        </div>
+    </footer>
+
+<script>
+function updateAutoSettings() {
+    const type = document.getElementById('column-type').value;
+    const autoSettings = document.getElementById('auto-settings');
+    const autoOptions = document.getElementById('auto-options');
+    const autoChange = document.getElementById('auto-change');
+    const editModeContainer = document.getElementById('edit-mode-container');
+
+    if (type === 'number') {
+        autoSettings.style.display = 'block';
+        editModeContainer.style.display = 'block';
+    } else {
+        autoSettings.style.display = 'none';
+        autoOptions.style.display = 'none';
+        autoChange.checked = false;
+        document.getElementById('edit-mode').value = 'direct';
+        editModeContainer.style.display = 'none';
+    }
+}
+
+function updateAutoOptions() {
+    const autoChange = document.getElementById('auto-change');
+    const autoOptions = document.getElementById('auto-options');
+    autoOptions.style.display = autoChange.checked ? 'block' : 'none';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize column creation toggles
+    updateAutoSettings();
+    updateAutoOptions();
+
+    // Event listeners for column creation
+    document.getElementById('column-type').addEventListener('change', updateAutoSettings);
+    document.getElementById('auto-change').addEventListener('change', updateAutoOptions);
+
+    // Handle save row via AJAX
+    document.querySelectorAll('.save-row').forEach(function(button) {
+        button.addEventListener('click', function() {
+            const rowId = this.dataset.row;
+            const row = this.closest('tr');
+            const cellForms = row.querySelectorAll('.cell-form');
+            let successCount = 0;
+            let totalForms = cellForms.length;
+
+            cellForms.forEach(function(form) {
+                const formData = new FormData(form);
+                const columnId = form.dataset.column;
+
+                fetch(`/update_cell/${rowId}/${columnId}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        successCount++;
+                        if (successCount === totalForms) {
+                            alert('Row saved!');
+                        }
+                    } else {
+                        alert('Error saving some cells.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error saving row.');
+                });
+            });
+        });
+    });
+
+    // Handle delete row via AJAX
+    document.querySelectorAll('.delete-row').forEach(function(button) {
+        button.addEventListener('click', function() {
+            if (!confirm('Delete this row?')) return;
+            const rowId = this.dataset.row;
+
+            fetch(`/delete_row/${rowId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: ''
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove the row from the DOM
+                    button.closest('tr').remove();
+                } else {
+                    alert('Error deleting row.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error deleting row.');
+            });
+        });
+    });
+
+    // Tab navigation for the table page
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    function showTab(tabId) {
+        tabPanels.forEach(panel => {
+            panel.classList.toggle('hidden', panel.id !== tabId);
+        });
+
+        tabButtons.forEach(button => {
+            button.classList.toggle('active', button.dataset.tab === tabId);
+        });
+    }
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            showTab(button.dataset.tab);
+        });
+    });
+
+    // Ensure correct initial tab is shown
+    const initialTab = document.querySelector('.tab-button.active');
+    if (initialTab) {
+        showTab(initialTab.dataset.tab);
+    }
+});
+</script>
+
+</body>
+</html>

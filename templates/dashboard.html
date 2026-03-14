@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - House Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <header class="header">
+        <nav class="nav-container">
+            <a href="/" class="logo">🏠 House Manager</a>
+            <div class="nav-links">
+                <span style="color: #6b7280;">Welcome, {{ session.get('username', 'Manager') }}</span>
+                <a href="/logout" class="back-link">← Logout</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <h1>Manager Dashboard</h1>
+
+        <div class="card">
+            <h2>📊 Create New Table</h2>
+            <form action="/create_table" method="post">
+                <div class="form-group">
+                    <label for="table-name">Table Name</label>
+                    <input id="table-name" name="name" placeholder="Enter table name" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Table</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>📋 Your Tables</h2>
+
+            <div class="search-bar">
+                <form method="get" action="/dashboard" style="display: flex; gap: 1rem; width: 100%;">
+                    <input name="q" placeholder="Search tables..." value="{{ q or '' }}">
+                    <button type="submit" class="btn btn-secondary">Search</button>
+                    {% if q %}
+                    <a href="/dashboard" class="btn btn-secondary">Clear</a>
+                    {% endif %}
+                </form>
+            </div>
+
+            {% if tables %}
+            <ul class="table-list">
+                {% for table in tables %}
+                <li>
+                    <div class="table-row">
+                        <a class="table-link" href="/table/{{table.id}}">
+                            📄 {{table.name}}
+                        </a>
+                        <div class="actions">
+                            <a href="/table/{{table.id}}" class="btn btn-primary">View</a>
+                            <form class="inline-form" action="/delete_table/{{table.id}}" method="post" onsubmit="return confirm('Delete table &quot;{{table.name}}&quot;? This action cannot be undone.');">
+                                <button type="submit" class="btn btn-danger">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="text-center" style="padding: 2rem; color: #6b7280;">
+                <p>No tables found. Create your first table above!</p>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 House Manager. Professional database management for modern businesses.</p>
+        </div>
+    </footer>
+</body>
+</html>
