@@ -203,23 +203,30 @@ def viewer_view(viewer_id):
 
 @app.route("/login", methods=["POST"])
 def login():
+    try:
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-    username = request.form["username"]
-    password = request.form["password"]
+        if not username or not password:
+            return "Username and password are required", 400
 
-    db = get_db()
+        db = get_db()
 
-    user = db.execute(
-        "SELECT * FROM managers WHERE username=? AND password=?",
-        (username, password),
-    ).fetchone()
+        user = db.execute(
+            "SELECT * FROM managers WHERE username=? AND password=?",
+            (username, password),
+        ).fetchone()
 
-    if user:
-        session["manager_id"] = user["id"]
-        session["username"] = user["username"]
-        return redirect("/dashboard")
-    else:
-        return "Login Failed"
+        if user:
+            session["manager_id"] = user["id"]
+            session["username"] = user["username"]
+            return redirect("/dashboard")
+        else:
+            return "Login Failed", 401
+
+    except Exception as e:
+        app.logger.error(f"Error in login: {e}")
+        return "Internal Server Error", 500
 
 
 @app.route("/register", methods=["GET", "POST"])
