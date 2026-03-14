@@ -9,6 +9,8 @@ import time
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "replace-with-a-secure-random-secret")  # Change in production
 
+background_thread_started = False
+
 
 def get_db():
     conn = sqlite3.connect("database.db")
@@ -647,10 +649,13 @@ def create_table():
     return redirect("/dashboard")
 
 
-@app.before_first_request
+@app.before_request
 def _start_background_tasks():
-    # Start the auto-update thread once per process.
-    start_auto_update_thread()
+    global background_thread_started
+    if not background_thread_started:
+        # Start the auto-update thread once per process.
+        start_auto_update_thread()
+        background_thread_started = True
 
 
 if __name__ == "__main__":
