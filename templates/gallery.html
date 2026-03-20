@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gallery - House Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .gallery-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            padding: 1rem 0;
+        }
+
+        .gallery-item {
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            background: white;
+        }
+
+        .gallery-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .gallery-item-info {
+            padding: 1rem;
+        }
+
+        .gallery-item-name {
+            font-size: 0.9rem;
+            color: #374151;
+            word-break: break-all;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+        }
+
+        .gallery-item-meta {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-bottom: 0.25rem;
+        }
+
+        .gallery-item-date {
+            font-size: 0.75rem;
+            color: #9ca3af;
+        }
+
+        .no-images {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: #6b7280;
+        }
+
+        .search-section {
+            margin-bottom: 2rem;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-bar input {
+            flex: 1;
+            min-width: 200px;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .search-bar button {
+            padding: 0.75rem 1.5rem;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .search-bar button:hover {
+            background-color: #2563eb;
+        }
+
+        .clear-search {
+            padding: 0.75rem 1rem;
+            background-color: #6b7280;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .clear-search:hover {
+            background-color: #4b5563;
+        }
+
+        .search-results {
+            margin-bottom: 1rem;
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <nav class="nav-container">
+            <a href="/" class="logo">🏠 House Manager</a>
+            <div class="nav-links">
+                <a href="/dashboard" class="back-link">← Dashboard</a>
+                <span style="color: #6b7280;">Gallery</span>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <h1>📸 Image Gallery</h1>
+
+        <div class="card search-section">
+            <h2>Search Images</h2>
+            <form class="search-bar" method="get" action="/gallery">
+                <input name="q" placeholder="Search by table name, column name, or image path..." value="{{ search_query or '' }}">
+                <button type="submit">Search</button>
+                {% if search_query %}
+                <a href="/gallery" class="clear-search">Clear</a>
+                {% endif %}
+            </form>
+            {% if search_query %}
+            <div class="search-results">
+                Showing results for: "<strong>{{ search_query }}</strong>"
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>Your Images</h2>
+            {% if images %}
+            <div class="gallery-container">
+                {% for image in images %}
+                <div class="gallery-item">
+                    <img src="{{ image.image_path }}" alt="{{ image.column_name }}" loading="lazy">
+                    <div class="gallery-item-info">
+                        <div class="gallery-item-name">{{ image.column_name }}</div>
+                        <div class="gallery-item-meta">Table: {{ image.table_name }}</div>
+                        <div class="gallery-item-date">{{ image.uploaded_at[:10] if image.uploaded_at else 'Unknown' }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="no-images">
+                {% if search_query %}
+                <p>🔍 No images found matching your search.</p>
+                <p><a href="/gallery">Clear search</a> to see all images.</p>
+                {% else %}
+                <p>📭 No images uploaded yet.</p>
+                <p>Create a table with an "Image" column and add some images to see them here!</p>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</body>
+
+</html>

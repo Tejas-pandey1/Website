@@ -13,6 +13,7 @@
         <nav class="nav-container">
             <a href="/" class="logo">🏠 House Manager</a>
             <div class="nav-links">
+                <a href="/gallery" class="back-link">🖼️ Gallery</a>
                 <a href="/dashboard" class="back-link">← Dashboard</a>
                 <span style="color: #6b7280;">Table: {{table.name}}</span>
             </div>
@@ -45,6 +46,7 @@
                         <select id="column-type" name="type" required>
                             <option value="text">Text</option>
                             <option value="number">Number</option>
+                            <option value="image">Image</option>
                         </select>
                     </div>
 
@@ -88,11 +90,15 @@
             <div class="card">
                 <h2>📝 Add Row</h2>
 
-                <form action="/create_row/{{table.id}}" method="post">
+                <form action="/create_row/{{table.id}}" method="post" enctype="multipart/form-data">
                     {% for column in columns %}
                     <div class="form-group">
-                        <label for="col-{{column.id}}">{{column.name}}{% if column.type == 'number' %} (Number){% endif %}</label>
-                        <input id="col-{{column.id}}" name="col_{{column.id}}" type="{{ 'number' if column.type == 'number' else 'text' }}" placeholder="{{column.name}}">
+                        <label for="col-{{column.id}}">{{column.name}}{% if column.type == 'number' %} (Number){% elif column.type == 'image' %} (Image){% endif %}</label>
+                        {% if column.type == 'image' %}
+                            <input id="col-{{column.id}}" name="col_{{column.id}}" type="file" accept="image/*" placeholder="{{column.name}}">
+                        {% else %}
+                            <input id="col-{{column.id}}" name="col_{{column.id}}" type="{{ 'number' if column.type == 'number' else 'text' }}" placeholder="{{column.name}}">
+                        {% endif %}
                         {% if column.type == 'number' and column.auto_change %}
                         <div class="auto-options" style="margin-top: 0.5rem;">
                             <div class="form-group">
@@ -138,7 +144,7 @@
                                 <td>{{loop.index}}</td>
                                 {% for column in columns %}
                                 <td>
-                                    <form class="cell-form" action="/update_cell/{{row.id}}/{{column.id}}" method="post" style="display:inline-block;" data-row="{{row.id}}" data-column="{{column.id}}">
+                                    <form class="cell-form" action="/update_cell/{{row.id}}/{{column.id}}" method="post" enctype="multipart/form-data" style="display:inline-block;" data-row="{{row.id}}" data-column="{{column.id}}">
                                         {% set cell_data = cell_values.get(row.id, {}).get(column.id, {}) %}
                                         {% set existing_value = cell_data.value if cell_data else '' %}
                                         {% set auto_change = cell_data.auto_change if cell_data else 0 %}
@@ -146,7 +152,15 @@
                                         {% set change_amount = cell_data.change_amount if cell_data else '' %}
                                         {% set time_interval = cell_data.time_interval if cell_data else 'day' %}
 
-                                        {% if column.type == 'number' and column.edit_mode == 'systematic' %}
+                                        {% if column.type == 'image' %}
+                                            {% if existing_value %}
+                                                <img src="{{ existing_value }}" alt="Cell image" style="max-width: 100px; max-height: 100px; border-radius: 4px;">
+                                                <br>
+                                                <input name="value" type="file" accept="image/*" style="font-size: 0.85em; margin-top: 0.25em;">
+                                            {% else %}
+                                                <input name="value" type="file" accept="image/*" required style="font-size: 0.85em;">
+                                            {% endif %}
+                                        {% elif column.type == 'number' and column.edit_mode == 'systematic' %}
                                         <div>
                                             <input type="number" step="any" name="amount" placeholder="Amount" style="width: 5em;">
                                             <select name="operation">

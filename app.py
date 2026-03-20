@@ -2,23 +2,49 @@ import os
 from datetime import datetime
 
 from flask import Flask, render_template, request, redirect, jsonify, session
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import threading
 import time
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "replace-with-a-secure-random-secret")  # Change in production
+app.secret_key = os.environ.get("SECRET_KEY", "your-super-secret-key-change-in-production-really-do-it")
+app.config['SESSION_PERMANENT'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = 30 * 24 * 60 * 60  # 30 days
+
+# Image upload configuration
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Create upload folder if it doesn't exist
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+def get_db():
+    db_path = os.path.join(os.getcwd(), "database.db")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 from database_setup import main as setup_db
 setup_db()
 
+# Verify database has required tables
+db = get_db()
+managers_table = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='managers'").fetchone()
+if not managers_table:
+    app.logger.error("Managers table not found! Database setup may have failed.")
+else:
+    user_count = db.execute("SELECT COUNT(*) as count FROM managers").fetchone()["count"]
+    app.logger.info(f"Database initialized successfully. {user_count} users found.")
+
 background_thread_started = False
-
-
-def get_db():
-    conn = sqlite3.connect("database.db")
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def get_cell_values(db, table_id):
@@ -216,16 +242,19 @@ def login():
         db = get_db()
 
         user = db.execute(
-            "SELECT * FROM managers WHERE username=? AND password=?",
-            (username, password),
+            "SELECT * FROM managers WHERE username=?",
+            (username,),
         ).fetchone()
 
-        if user:
+        if user and check_password_hash(user["password"], password):
             session["manager_id"] = user["id"]
             session["username"] = user["username"]
+            session.permanent = True  # Make session persistent
+            app.logger.info(f"User logged in: {username}")
             return redirect("/dashboard")
         else:
-            return "Login Failed", 401
+            app.logger.warning(f"Failed login attempt for username: {username}")
+            return "Invalid username or password", 401
 
     except Exception as e:
         app.logger.error(f"Error in login: {e}")
@@ -237,25 +266,71 @@ def register():
     if request.method == "GET":
         return render_template("register.html")
 
-    username = request.form["username"]
-    password = request.form["password"]
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "").strip()
+
+    # Validation
+    if not username or not password:
+        return "Username and password are required", 400
+
+    if len(username) < 3:
+        return "Username must be at least 3 characters long", 400
+
+    if len(password) < 6:
+        return "Password must be at least 6 characters long", 400
+
+    # Hash the password
+    hashed_password = generate_password_hash(password)
 
     db = get_db()
 
-    db.execute(
-        "INSERT INTO managers (username,password) VALUES (?,?)",
-        (username, password),
-    )
+    try:
+        # Check if username already exists
+        existing_user = db.execute(
+            "SELECT id FROM managers WHERE username = ?",
+            (username,)
+        ).fetchone()
 
-    db.commit()
+        if existing_user:
+            return "Username already exists. Please choose a different username.", 400
 
-    return redirect("/manager")
+        # Insert new user
+        db.execute(
+            "INSERT INTO managers (username, password) VALUES (?, ?)",
+            (username, hashed_password)
+        )
+        db.commit()
+
+        app.logger.info(f"New user registered: {username}")
+        return redirect("/manager")
+
+    except Exception as e:
+        app.logger.error(f"Error registering user: {e}")
+        return "Registration failed. Please try again.", 500
 
 
 @app.route("/logout")
 def logout():
     session.clear()
+    session.pop('manager_id', None)
+    session.pop('username', None)
     return redirect("/")
+
+
+@app.route("/debug")
+def debug():
+    """Debug route to check session and database status"""
+    db = get_db()
+    users = db.execute("SELECT id, username FROM managers").fetchall()
+    
+    user_list = "".join(f"<li>{user['username']} (ID: {user['id']})</li>" for user in users)
+    
+    return f"""
+    <h1>Debug Info</h1>
+    <p>Session: {dict(session)}</p>
+    <p>Users in DB: {len(users)}</p>
+    <ul>{user_list}</ul>
+    """
 
 
 @app.route("/dashboard")
@@ -508,7 +583,25 @@ def create_row(table_id):
     ).fetchall()
 
     for col in columns:
-        value = request.form.get(f"col_{col['id']}", "")
+        value = ""
+        
+        # Handle image uploads
+        if col["type"] == "image":
+            file_key = f"col_{col['id']}"
+            if file_key in request.files:
+                file = request.files[file_key]
+                if file and file.filename and allowed_file(file.filename):
+                    try:
+                        filename = secure_filename(file.filename)
+                        filename = f"{manager_id}_{col['id']}_{datetime.utcnow().timestamp()}_{filename}"
+                        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        file.save(file_path)
+                        value = f"/{file_path}"
+                    except Exception as e:
+                        app.logger.error(f"Error uploading image: {e}")
+        else:
+            value = request.form.get(f"col_{col['id']}", "")
+        
         auto_change = 1 if col["auto_change"] and col["type"] == "number" else 0
         change_type = request.form.get(f"change_type_{col['id']}") if auto_change else None
         change_amount_str = request.form.get(f"change_amount_{col['id']}") if auto_change else None
@@ -584,7 +677,26 @@ def update_cell(row_id, column_id):
         (row_id, column_id),
     ).fetchone()
 
-    value = request.form.get("value", "")
+    value = ""
+    
+    # Handle image uploads
+    if column["type"] == "image":
+        if 'value' in request.files:
+            file = request.files['value']
+            if file and file.filename and allowed_file(file.filename):
+                try:
+                    filename = secure_filename(file.filename)
+                    filename = f"{manager_id}_{column_id}_{datetime.utcnow().timestamp()}_{filename}"
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    file.save(file_path)
+                    value = f"/{file_path}"
+                except Exception as e:
+                    app.logger.error(f"Error uploading image: {e}")
+        else:
+            # If no new file, keep existing value
+            value = existing["value"] if existing else ""
+    else:
+        value = request.form.get("value", "")
 
     if column["type"] == "number":
         if column["edit_mode"] == "systematic":
@@ -657,6 +769,89 @@ def create_table():
     db.commit()
 
     return redirect("/dashboard")
+
+
+@app.route("/upload_image", methods=["POST"])
+def upload_image():
+    login_check = require_login()
+    if login_check:
+        return login_check
+
+    manager_id = get_current_manager_id()
+    
+    if 'file' not in request.files:
+        return "No file provided", 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return "No file selected", 400
+    
+    if not allowed_file(file.filename):
+        return "File type not allowed. Allowed: png, jpg, jpeg, gif, webp", 400
+    
+    try:
+        filename = secure_filename(file.filename)
+        filename = f"{manager_id}_{datetime.utcnow().timestamp()}_{filename}"
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        
+        db = get_db()
+        db.execute(
+            "INSERT INTO images (manager_id, filename, file_path) VALUES (?, ?, ?)",
+            (manager_id, file.filename, f"/{file_path}")
+        )
+        db.commit()
+        
+        return jsonify({"success": True, "filename": filename, "path": f"/{file_path}"})
+    except Exception as e:
+        app.logger.error(f"Error uploading image: {e}")
+        return "Error uploading file", 500
+
+
+@app.route("/gallery")
+def gallery():
+    login_check = require_login()
+    if login_check:
+        return login_check
+    
+    manager_id = get_current_manager_id()
+    db = get_db()
+    
+    # Get search query
+    search_query = request.args.get('q', '').strip()
+    
+    # Get all images from data tables
+    query = """
+        SELECT 
+            cv.value as image_path,
+            cv.row_id,
+            cv.column_id,
+            t.name as table_name,
+            c.name as column_name,
+            r.created_at as uploaded_at
+        FROM cell_values cv
+        JOIN columns c ON cv.column_id = c.id
+        JOIN tables t ON c.table_id = t.id
+        JOIN rows r ON cv.row_id = r.id
+        WHERE t.manager_id = ? 
+        AND c.type = 'image' 
+        AND cv.value != '' 
+        AND cv.value IS NOT NULL
+    """
+    
+    params = [manager_id]
+    
+    if search_query:
+        query += " AND (t.name LIKE ? OR c.name LIKE ? OR cv.value LIKE ?)"
+        search_param = f"%{search_query}%"
+        params.extend([search_param, search_param, search_param])
+    
+    query += " ORDER BY r.created_at DESC"
+    
+    images = db.execute(query, params).fetchall()
+    
+    return render_template("gallery.html", images=images, search_query=search_query)
 
 
 @app.before_request

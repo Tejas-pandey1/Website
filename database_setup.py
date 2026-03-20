@@ -1,4 +1,5 @@
 import sqlite3
+import os
 from datetime import datetime
 
 
@@ -11,7 +12,8 @@ def add_column_if_not_exists(conn, table_name, column_name, definition):
 
 
 def main():
-    conn = sqlite3.connect("database.db")
+    db_path = os.path.join(os.getcwd(), "database.db")
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
     # Managers
@@ -103,6 +105,19 @@ def main():
             password TEXT,
             table_id INTEGER,
             row_id INTEGER
+        )
+        """
+    )
+
+    # Images gallery
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS images(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            manager_id INTEGER,
+            filename TEXT,
+            file_path TEXT,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
