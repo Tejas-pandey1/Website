@@ -6,6 +6,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{table.name}} - House Manager</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .row-edit-mode {
+            background-color: #fef3c7 !important;
+        }
+
+        .row-view-mode input,
+        .row-view-mode select {
+            cursor: not-allowed;
+            background-color: #f3f4f6;
+            border: none !important;
+        }
+
+        .row-view-mode input:disabled,
+        .row-view-mode select:disabled {
+            cursor: not-allowed;
+        }
+
+        .edit-btn {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .edit-btn:hover {
+            background-color: #2563eb;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .hidden-actions {
+            display: none;
+        }
+
+        .shown-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+    </style>
 </head>
 
 <body>
@@ -140,11 +186,24 @@
                         </thead>
                         <tbody>
                             {% for row in rows %}
-                            <tr>
+                            <tr class="data-row row-view-mode" data-row-id="{{row.id}}">
                                 <td>{{loop.index}}</td>
                                 {% for column in columns %}
-                                <td>
-                                    <form class="cell-form" action="/update_cell/{{row.id}}/{{column.id}}" method="post" enctype="multipart/form-data" style="display:inline-block;" data-row="{{row.id}}" data-column="{{column.id}}">
+                                <td class="cell-data">
+                                    <div class="cell-view" style="min-height: 30px; display: flex; align-items: center;">
+                                        {% set cell_data = cell_values.get(row.id, {}).get(column.id, {}) %}
+                                        {% set existing_value = cell_data.value if cell_data else '' %}
+                                        
+                                        {% if column.type == 'image' and existing_value %}
+                                            <img src="{{ existing_value }}" alt="Image" style="max-width: 80px; max-height: 80px; border-radius: 4px;">
+                                        {% elif column.type == 'number' and column.edit_mode == 'systematic' %}
+                                            <span>{{ existing_value or '0' }}</span>
+                                        {% else %}
+                                            <span>{{ existing_value or '-' }}</span>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <form class="cell-form hidden" action="/update_cell/{{row.id}}/{{column.id}}" method="post" enctype="multipart/form-data" style="display:none;" data-row="{{row.id}}" data-column="{{column.id}}">
                                         {% set cell_data = cell_values.get(row.id, {}).get(column.id, {}) %}
                                         {% set existing_value = cell_data.value if cell_data else '' %}
                                         {% set auto_change = cell_data.auto_change if cell_data else 0 %}
@@ -154,31 +213,34 @@
 
                                         {% if column.type == 'image' %}
                                             {% if existing_value %}
-                                                <img src="{{ existing_value }}" alt="Cell image" style="max-width: 100px; max-height: 100px; border-radius: 4px;">
+                                                <img src="{{ existing_value }}" alt="Cell image" style="max-width: 100px; max-height: 100px; border-radius: 4px; display: block; margin-bottom: 0.5rem;">
                                                 <br>
                                                 <input name="value" type="file" accept="image/*" style="font-size: 0.85em; margin-top: 0.25em;">
                                             {% else %}
                                                 <input name="value" type="file" accept="image/*" required style="font-size: 0.85em;">
                                             {% endif %}
                                         {% elif column.type == 'number' and column.edit_mode == 'systematic' %}
-                                        <div>
+                                        <div style="display: flex; gap: 0.5rem;">
                                             <input type="number" step="any" name="amount" placeholder="Amount" style="width: 5em;">
                                             <select name="operation">
                                                 <option value="increase">+</option>
                                                 <option value="decrease">-</option>
                                             </select>
                                         </div>
-                                        <div>Current: {{ existing_value or '0' }}</div>
                                         {% else %}
-                                        <input name="value" type="{{ 'number' if column.type == 'number' else 'text' }}" value="{{ existing_value }}" style="width: 8em;">
+                                        <input name="value" type="{{ 'number' if column.type == 'number' else 'text' }}" value="{{ existing_value }}" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
                                         {% endif %}
-
                                     </form>
                                 </td>
                                 {% endfor %}
                                 <td class="actions">
-                                    <button class="btn btn-success save-row" data-row="{{row.id}}">Save Row</button>
-                                    <button class="btn btn-danger delete-row" data-row="{{row.id}}">Delete</button>
+                                    <div class="action-buttons">
+                                        <button class="edit-btn edit-row-btn" data-row="{{row.id}}">✏️ Edit</button>
+                                        <div class="action-button-group hidden-actions" style="display: none;">
+                                            <button class="btn btn-success save-row" data-row="{{row.id}}">✓ Save</button>
+                                            <button class="btn btn-danger delete-row" data-row="{{row.id}}">🗑️ Delete</button>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -270,11 +332,46 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('column-type').addEventListener('change', updateAutoSettings);
     document.getElementById('auto-change').addEventListener('change', updateAutoOptions);
 
+    // Handle edit row button
+    document.querySelectorAll('.edit-row-btn').forEach(function(button) {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const rowId = this.dataset.row;
+            const row = document.querySelector(`tr[data-row-id="${rowId}"]`);
+            const isEditMode = row.classList.contains('row-edit-mode');
+
+            if (!isEditMode) {
+                // Enter edit mode
+                row.classList.remove('row-view-mode');
+                row.classList.add('row-edit-mode');
+
+                // Hide edit button, show save/delete buttons
+                button.style.display = 'none';
+                const actionGroup = row.querySelector('.action-button-group');
+                actionGroup.style.display = 'flex';
+
+                // Disable cell views, show forms
+                row.querySelectorAll('.cell-data').forEach(function(cell) {
+                    const cellView = cell.querySelector('.cell-view');
+                    const cellForm = cell.querySelector('.cell-form');
+                    if (cellView) cellView.style.display = 'none';
+                    if (cellForm) cellForm.style.display = 'block';
+
+                    // Enable all inputs in this cell
+                    cellForm.querySelectorAll('input, select').forEach(function(input) {
+                        input.disabled = false;
+                    });
+                });
+            }
+        });
+    });
+
     // Handle save row via AJAX
     document.querySelectorAll('.save-row').forEach(function(button) {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
             const rowId = this.dataset.row;
-            const row = this.closest('tr');
+            const row = document.querySelector(`tr[data-row-id="${rowId}"]`);
             const cellForms = row.querySelectorAll('.cell-form');
             let successCount = 0;
             let totalForms = cellForms.length;
@@ -295,7 +392,43 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.success) {
                         successCount++;
                         if (successCount === totalForms) {
-                            alert('Row saved!');
+                            // Exit edit mode
+                            row.classList.remove('row-edit-mode');
+                            row.classList.add('row-view-mode');
+
+                            // Show edit button, hide save/delete buttons
+                            const editBtn = row.querySelector('.edit-row-btn');
+                            editBtn.style.display = 'block';
+                            row.querySelector('.action-button-group').style.display = 'none';
+
+                            // Update cell views and hide forms
+                            row.querySelectorAll('.cell-data').forEach(function(cell) {
+                                const cellView = cell.querySelector('.cell-view');
+                                const cellForm = cell.querySelector('.cell-form');
+                                
+                                // Update view with new value
+                                const input = cellForm.querySelector('input[name="value"], select[name="operation"]');
+                                if (input && cellForm.querySelectorAll('select[name="operation"]').length === 0) {
+                                    const fileInput = cellForm.querySelector('input[type="file"]');
+                                    const textInput = cellForm.querySelector('input[name="value"]:not([type="file"])');
+                                    
+                                    if (fileInput && fileInput.files.length === 0 && cellView.querySelector('img')) {
+                                        // Keep existing image
+                                    } else if (textInput) {
+                                        cellView.innerHTML = '<span>' + (textInput.value || '-') + '</span>';
+                                    }
+                                }
+                                
+                                if (cellView) cellView.style.display = 'flex';
+                                if (cellForm) cellForm.style.display = 'none';
+
+                                // Disable all inputs
+                                cellForm.querySelectorAll('input, select').forEach(function(input) {
+                                    input.disabled = true;
+                                });
+                            });
+
+                            alert('Row saved successfully!');
                         }
                     } else {
                         alert('Error saving some cells.');
@@ -311,8 +444,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Handle delete row via AJAX
     document.querySelectorAll('.delete-row').forEach(function(button) {
-        button.addEventListener('click', function() {
-            if (!confirm('Delete this row?')) return;
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (!confirm('Delete this row? This cannot be undone.')) return;
             const rowId = this.dataset.row;
 
             fetch(`/delete_row/${rowId}`, {
@@ -328,6 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     // Remove the row from the DOM
                     button.closest('tr').remove();
+                    alert('Row deleted successfully!');
                 } else {
                     alert('Error deleting row.');
                 }
