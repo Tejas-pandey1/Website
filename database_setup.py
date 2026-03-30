@@ -122,6 +122,18 @@ def main():
         """
     )
 
+    # Sessions table for persistent sessions
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sessions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT UNIQUE,
+            data TEXT,
+            expiry TIMESTAMP
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
 

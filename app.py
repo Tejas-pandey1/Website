@@ -1,5 +1,9 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from flask.sessions import SessionInterface, SessionMixin
+from werkzeug.datastructures import CallbackDict
+import json
+import base64
 
 from flask import Flask, render_template, request, redirect, jsonify, session
 from werkzeug.utils import secure_filename
@@ -8,20 +12,101 @@ import sqlite3
 import threading
 import time
 
+
+class DatabaseSession(CallbackDict, SessionMixin):
+    def __init__(self, initial=None, sid=None):
+        if initial is None:
+            initial = {}
+        CallbackDict.__init__(self, initial, self.on_update)
+        self.sid = sid
+        self.modified = False
+
+    def on_update(self, *args):
+        self.modified = True
+
+
+class DatabaseSessionInterface(SessionInterface):
+    def __init__(self):
+        pass
+
+    def get_db(self):
+        db_path = os.path.join(os.getcwd(), "database.db")
+        conn = sqlite3.connect(db_path)
+        return conn
+
+    def open_session(self, app, request):
+        sid = request.cookies.get(self.get_cookie_name(app))
+        if not sid:
+            sid = base64.b64encode(os.urandom(24)).decode('utf-8')
+            return DatabaseSession(sid=sid)
+
+        conn = self.get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT data FROM sessions WHERE session_id = ? AND expiry > ?", 
+                   (sid, datetime.now(timezone.utc)))
+        row = cur.fetchone()
+        conn.close()
+
+        if row:
+            try:
+                data = json.loads(row[0])
+                return DatabaseSession(data, sid=sid)
+            except:
+                pass
+
+        return DatabaseSession(sid=sid)
+
+    def save_session(self, app, session, response):
+        domain = self.get_cookie_domain(app)
+        path = self.get_cookie_path(app)
+        name = self.get_cookie_name(app)
+
+        if not session:
+            if session.sid:
+                response.delete_cookie(name, domain=domain, path=path)
+            return
+
+        if not session.modified:
+            return
+
+        conn = self.get_db()
+        cur = conn.cursor()
+
+        # Clean up expired sessions
+        cur.execute("DELETE FROM sessions WHERE expiry < ?", (datetime.now(timezone.utc),))
+
+        # Calculate expiry
+        expiry = datetime.now(timezone.utc) + timedelta(days=30)
+
+        # Serialize session data
+        data = json.dumps(dict(session))
+
+        # Store session
+        cur.execute("""
+            INSERT OR REPLACE INTO sessions (session_id, data, expiry) 
+            VALUES (?, ?, ?)
+        """, (session.sid, data, expiry))
+
+        conn.commit()
+        conn.close()
+
+        response.set_cookie(name, session.sid,
+                          expires=expiry, httponly=True, domain=domain, path=path)
+
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-super-secret-key-change-in-production-really-do-it")
-app.config['SESSION_PERMANENT'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = 30 * 24 * 60 * 60  # 30 days
+app.session_interface = DatabaseSessionInterface()
 
 # Image upload configuration
-UPLOAD_FOLDER = 'static/uploads'
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'static', 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Create upload folder if it doesn't exist
 if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def get_db():
     db_path = os.path.join(os.getcwd(), "database.db")
@@ -76,7 +161,7 @@ def apply_auto_updates():
     if not cells:
         return
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     interval_seconds = {
         "hour": 60 * 60,
@@ -593,7 +678,7 @@ def create_row(table_id):
                 if file and file.filename and allowed_file(file.filename):
                     try:
                         filename = secure_filename(file.filename)
-                        filename = f"{manager_id}_{col['id']}_{datetime.utcnow().timestamp()}_{filename}"
+                        filename = f"{manager_id}_{col['id']}_{datetime.now(timezone.utc).timestamp()}_{filename}"
                         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                         file.save(file_path)
                         value = f"/{file_path}"
@@ -686,10 +771,11 @@ def update_cell(row_id, column_id):
             if file and file.filename and allowed_file(file.filename):
                 try:
                     filename = secure_filename(file.filename)
-                    filename = f"{manager_id}_{column_id}_{datetime.utcnow().timestamp()}_{filename}"
+                    filename = f"{manager_id}_{column_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
                     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     file.save(file_path)
-                    value = f"/{file_path}"
+                    # Store relative URL path instead of absolute file path
+                    value = f"/static/uploads/{filename}"
                 except Exception as e:
                     app.logger.error(f"Error uploading image: {e}")
         else:
@@ -792,7 +878,7 @@ def upload_image():
     
     try:
         filename = secure_filename(file.filename)
-        filename = f"{manager_id}_{datetime.utcnow().timestamp()}_{filename}"
+        filename = f"{manager_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
         
