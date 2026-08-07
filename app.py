@@ -4,8 +4,9 @@ from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 import json
 import base64
+import mimetypes
 
-from flask import Flask, render_template, request, redirect, jsonify, session
+from flask import Flask, render_template, request, redirect, jsonify, session, send_from_directory, Response
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -128,6 +129,49 @@ if not managers_table:
 else:
     user_count = db.execute("SELECT COUNT(*) as count FROM managers").fetchone()["count"]
     app.logger.info(f"Database initialized successfully. {user_count} users found.")
+
+
+def migrate_existing_image_files():
+    """Migrate existing uploaded files referenced by cell_values into the images table as blobs."""
+    try:
+        db = get_db()
+        cur = db.cursor()
+        # Find all distinct cell_values that point to static uploads
+        rows = cur.execute("SELECT id, value FROM cell_values WHERE value LIKE '/static/uploads/%'").fetchall()
+        for cid, val in rows:
+            # If this value already points to /image/<id> skip
+            if val.startswith('/image/'):
+                continue
+            # Check if an images entry already exists for this file_path
+            existing = cur.execute("SELECT id FROM images WHERE file_path = ?", (val,)).fetchone()
+            if existing:
+                image_id = existing[0]
+            else:
+                # Read file from disk
+                rel = val.replace('/static/', '')
+                file_disk_path = os.path.join(os.getcwd(), 'static', rel)
+                if not os.path.exists(file_disk_path):
+                    app.logger.warning(f"File for migration not found: {file_disk_path}")
+                    continue
+                with open(file_disk_path, 'rb') as f:
+                    data = f.read()
+                mimetype_guess, _ = mimetypes.guess_type(file_disk_path)
+                mimetype = mimetype_guess or 'application/octet-stream'
+                cur.execute(
+                    "INSERT INTO images (manager_id, filename, file_path, mimetype, data) VALUES (?, ?, ?, ?, ?)",
+                    (None, os.path.basename(file_disk_path), val, mimetype, data)
+                )
+                image_id = cur.lastrowid
+                db.commit()
+            # Update the cell_values to point to the DB-served image URL
+            cur.execute("UPDATE cell_values SET value = ? WHERE id = ?", (f"/image/{image_id}", cid))
+        db.commit()
+        app.logger.info("Image migration completed")
+    except Exception as e:
+        app.logger.error(f"Error during image migration: {e}")
+
+# Run migration once at startup
+migrate_existing_image_files()
 
 background_thread_started = False
 
@@ -773,9 +817,22 @@ def update_cell(row_id, column_id):
                     filename = secure_filename(file.filename)
                     filename = f"{manager_id}_{column_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
                     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    # Save file to disk
                     file.save(file_path)
-                    # Store relative URL path instead of absolute file path
-                    value = f"/static/uploads/{filename}"
+
+                    # Read bytes for DB storage
+                    with open(file_path, 'rb') as f:
+                        data = f.read()
+
+                    mimetype = file.mimetype or 'application/octet-stream'
+
+                    cur = db.cursor()
+                    cur.execute(
+                        "INSERT INTO images (manager_id, filename, file_path, mimetype, data) VALUES (?, ?, ?, ?, ?)",
+                        (manager_id, file.filename, f"/static/uploads/{filename}", mimetype, data)
+                    )
+                    image_id = cur.lastrowid
+                    value = f"/image/{image_id}"
                 except Exception as e:
                     app.logger.error(f"Error uploading image: {e}")
         else:
@@ -880,16 +937,27 @@ def upload_image():
         filename = secure_filename(file.filename)
         filename = f"{manager_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # Save file to disk
         file.save(file_path)
-        
+
+        # Store file bytes into DB as well for cross-device persistence
+        with open(file_path, 'rb') as f:
+            data = f.read()
+
+        mimetype = file.mimetype or 'application/octet-stream'
+
         db = get_db()
-        db.execute(
-            "INSERT INTO images (manager_id, filename, file_path) VALUES (?, ?, ?)",
-            (manager_id, file.filename, f"/{file_path}")
+        cur = db.cursor()
+        cur.execute(
+            "INSERT INTO images (manager_id, filename, file_path, mimetype, data) VALUES (?, ?, ?, ?, ?)",
+            (manager_id, file.filename, f"/static/uploads/{filename}", mimetype, data)
         )
+        image_id = cur.lastrowid
         db.commit()
-        
-        return jsonify({"success": True, "filename": filename, "path": f"/{file_path}"})
+
+        # Return URL that serves image from DB
+        image_url = f"/image/{image_id}"
+        return jsonify({"success": True, "filename": filename, "path": image_url, "id": image_id})
     except Exception as e:
         app.logger.error(f"Error uploading image: {e}")
         return "Error uploading file", 500
@@ -938,6 +1006,32 @@ def gallery():
     images = db.execute(query, params).fetchall()
     
     return render_template("gallery.html", images=images, search_query=search_query)
+
+
+@app.route('/image/<int:image_id>')
+def serve_image(image_id):
+    db = get_db()
+    img = db.execute("SELECT filename, mimetype, data, file_path FROM images WHERE id=?", (image_id,)).fetchone()
+    if not img:
+        return "Image not found", 404
+
+    # If we have blob data in DB, serve it
+    if img['data']:
+        return Response(img['data'], mimetype=img['mimetype'])
+
+    # Fallback to disk file if data missing
+    file_path = img['file_path'] or ''
+    if file_path.startswith('/static/'):
+        parts = file_path.split('/static/')
+        rel = parts[-1]
+        directory = os.path.join(os.getcwd(), 'static', os.path.dirname(rel))
+        filename = os.path.basename(rel)
+        try:
+            return send_from_directory(directory, filename)
+        except Exception:
+            return "Image file not found", 404
+
+    return "Image not available", 404
 
 
 @app.before_request
