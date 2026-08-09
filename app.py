@@ -4,9 +4,8 @@ from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 import json
 import base64
-import mimetypes
 
-from flask import Flask, render_template, request, redirect, jsonify, session, send_from_directory, Response
+from flask import Flask, render_template, request, redirect, jsonify, session
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -130,49 +129,6 @@ else:
     user_count = db.execute("SELECT COUNT(*) as count FROM managers").fetchone()["count"]
     app.logger.info(f"Database initialized successfully. {user_count} users found.")
 
-
-def migrate_existing_image_files():
-    """Migrate existing uploaded files referenced by cell_values into the images table as blobs."""
-    try:
-        db = get_db()
-        cur = db.cursor()
-        # Find all distinct cell_values that point to static uploads
-        rows = cur.execute("SELECT id, value FROM cell_values WHERE value LIKE '/static/uploads/%'").fetchall()
-        for cid, val in rows:
-            # If this value already points to /image/<id> skip
-            if val.startswith('/image/'):
-                continue
-            # Check if an images entry already exists for this file_path
-            existing = cur.execute("SELECT id FROM images WHERE file_path = ?", (val,)).fetchone()
-            if existing:
-                image_id = existing[0]
-            else:
-                # Read file from disk
-                rel = val.replace('/static/', '')
-                file_disk_path = os.path.join(os.getcwd(), 'static', rel)
-                if not os.path.exists(file_disk_path):
-                    app.logger.warning(f"File for migration not found: {file_disk_path}")
-                    continue
-                with open(file_disk_path, 'rb') as f:
-                    data = f.read()
-                mimetype_guess, _ = mimetypes.guess_type(file_disk_path)
-                mimetype = mimetype_guess or 'application/octet-stream'
-                cur.execute(
-                    "INSERT INTO images (manager_id, filename, file_path, mimetype, data) VALUES (?, ?, ?, ?, ?)",
-                    (None, os.path.basename(file_disk_path), val, mimetype, data)
-                )
-                image_id = cur.lastrowid
-                db.commit()
-            # Update the cell_values to point to the DB-served image URL
-            cur.execute("UPDATE cell_values SET value = ? WHERE id = ?", (f"/image/{image_id}", cid))
-        db.commit()
-        app.logger.info("Image migration completed")
-    except Exception as e:
-        app.logger.error(f"Error during image migration: {e}")
-
-# Run migration once at startup
-migrate_existing_image_files()
-
 background_thread_started = False
 
 
@@ -191,6 +147,48 @@ def get_cell_values(db, table_id):
     nested = {}
     for v in values:
         nested.setdefault(v["row_id"], {})[v["column_id"]] = v
+    # Normalize image paths for image columns so templates receive usable URLs
+    try:
+        cols = db.execute("SELECT id, type FROM columns WHERE table_id=?", (table_id,)).fetchall()
+        col_type_map = {c["id"]: c["type"] for c in cols}
+
+        def _normalize_image_value(val):
+            if not val:
+                return val
+            s = str(val)
+            s_norm = s.replace('\\', '/')
+            if s_norm.startswith('/image/') or s_norm.startswith('/static/') or s_norm.startswith('http'):
+                return s_norm
+
+            # exact match in images table
+            row = db.execute("SELECT id FROM images WHERE file_path = ?", (s_norm,)).fetchone()
+            if row:
+                return f"/image/{row['id']}"
+
+            # match by filename
+            fname = os.path.basename(s_norm)
+            row = db.execute("SELECT id FROM images WHERE filename = ? ORDER BY id DESC LIMIT 1", (fname,)).fetchone()
+            if row:
+                return f"/image/{row['id']}"
+
+            # fallback: LIKE search in file_path
+            row = db.execute("SELECT id FROM images WHERE file_path LIKE ? ORDER BY id DESC LIMIT 1", (f"%{fname}%",)).fetchone()
+            if row:
+                return f"/image/{row['id']}"
+
+            return s_norm
+
+        for rid, cols_dict in nested.items():
+            for cid, cell in list(cols_dict.items()):
+                try:
+                    ctype = col_type_map.get(cid)
+                except Exception:
+                    ctype = None
+                if ctype == 'image' and cell and cell.get('value'):
+                    cols_dict[cid]['value'] = _normalize_image_value(cell.get('value'))
+    except Exception:
+        pass
+
     return nested
 
 
@@ -817,22 +815,9 @@ def update_cell(row_id, column_id):
                     filename = secure_filename(file.filename)
                     filename = f"{manager_id}_{column_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
                     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    # Save file to disk
                     file.save(file_path)
-
-                    # Read bytes for DB storage
-                    with open(file_path, 'rb') as f:
-                        data = f.read()
-
-                    mimetype = file.mimetype or 'application/octet-stream'
-
-                    cur = db.cursor()
-                    cur.execute(
-                        "INSERT INTO images (manager_id, filename, file_path, mimetype, data) VALUES (?, ?, ?, ?, ?)",
-                        (manager_id, file.filename, f"/static/uploads/{filename}", mimetype, data)
-                    )
-                    image_id = cur.lastrowid
-                    value = f"/image/{image_id}"
+                    # Store relative URL path instead of absolute file path
+                    value = f"/static/uploads/{filename}"
                 except Exception as e:
                     app.logger.error(f"Error uploading image: {e}")
         else:
@@ -937,27 +922,16 @@ def upload_image():
         filename = secure_filename(file.filename)
         filename = f"{manager_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        # Save file to disk
         file.save(file_path)
-
-        # Store file bytes into DB as well for cross-device persistence
-        with open(file_path, 'rb') as f:
-            data = f.read()
-
-        mimetype = file.mimetype or 'application/octet-stream'
-
+        
         db = get_db()
-        cur = db.cursor()
-        cur.execute(
-            "INSERT INTO images (manager_id, filename, file_path, mimetype, data) VALUES (?, ?, ?, ?, ?)",
-            (manager_id, file.filename, f"/static/uploads/{filename}", mimetype, data)
+        db.execute(
+            "INSERT INTO images (manager_id, filename, file_path) VALUES (?, ?, ?)",
+            (manager_id, file.filename, f"/{file_path}")
         )
-        image_id = cur.lastrowid
         db.commit()
-
-        # Return URL that serves image from DB
-        image_url = f"/image/{image_id}"
-        return jsonify({"success": True, "filename": filename, "path": image_url, "id": image_id})
+        
+        return jsonify({"success": True, "filename": filename, "path": f"/{file_path}"})
     except Exception as e:
         app.logger.error(f"Error uploading image: {e}")
         return "Error uploading file", 500
@@ -1004,34 +978,31 @@ def gallery():
     query += " ORDER BY r.created_at DESC"
     
     images = db.execute(query, params).fetchall()
-    
-    return render_template("gallery.html", images=images, search_query=search_query)
+    # Normalize returned image paths to ensure browser-friendly URLs
+    normalized_images = []
+    try:
+        for img in images:
+            imgd = dict(img)
+            path = imgd.get('image_path') or imgd.get('file_path') or ''
+            # quick normalization similar to get_cell_values
+            p = str(path).replace('\\', '/')
+            if p.startswith('/image/') or p.startswith('/static/') or p.startswith('http'):
+                imgd['image_path'] = p
+            else:
+                # try to resolve via images table
+                found = db.execute("SELECT id FROM images WHERE file_path = ?", (p,)).fetchone()
+                if not found:
+                    fname = os.path.basename(p)
+                    found = db.execute("SELECT id FROM images WHERE filename = ? ORDER BY id DESC LIMIT 1", (fname,)).fetchone()
+                if found:
+                    imgd['image_path'] = f"/image/{found['id']}"
+                else:
+                    imgd['image_path'] = p
+            normalized_images.append(imgd)
+    except Exception:
+        normalized_images = [dict(i) for i in images]
 
-
-@app.route('/image/<int:image_id>')
-def serve_image(image_id):
-    db = get_db()
-    img = db.execute("SELECT filename, mimetype, data, file_path FROM images WHERE id=?", (image_id,)).fetchone()
-    if not img:
-        return "Image not found", 404
-
-    # If we have blob data in DB, serve it
-    if img['data']:
-        return Response(img['data'], mimetype=img['mimetype'])
-
-    # Fallback to disk file if data missing
-    file_path = img['file_path'] or ''
-    if file_path.startswith('/static/'):
-        parts = file_path.split('/static/')
-        rel = parts[-1]
-        directory = os.path.join(os.getcwd(), 'static', os.path.dirname(rel))
-        filename = os.path.basename(rel)
-        try:
-            return send_from_directory(directory, filename)
-        except Exception:
-            return "Image file not found", 404
-
-    return "Image not available", 404
+    return render_template("gallery.html", images=normalized_images, search_query=search_query)
 
 
 @app.before_request

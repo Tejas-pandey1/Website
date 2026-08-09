@@ -117,16 +117,10 @@ def main():
             manager_id INTEGER,
             filename TEXT,
             file_path TEXT,
-            mimetype TEXT,
-            data BLOB,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
-
-    # Ensure new columns exist for older DBs
-    add_column_if_not_exists(conn, "images", "mimetype", "TEXT")
-    add_column_if_not_exists(conn, "images", "data", "BLOB")
 
     # Sessions table for persistent sessions
     cur.execute(
