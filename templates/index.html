@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 
@@ -5,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Gallery | House Manager</title>
+    <title>House Manager</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -13,7 +14,6 @@
 <body>
 
 <header class="header">
-
     <nav class="nav-container">
 
         <a href="/" class="logo">
@@ -21,143 +21,116 @@
         </a>
 
         <div class="nav-links">
-            <a href="/dashboard" class="back-link">
-                Dashboard
-            </a>
-
-            <span>Gallery</span>
+            <a href="/manager">Manager Login</a>
+            <a href="/viewer">Viewer Access</a>
         </div>
 
     </nav>
-
 </header>
 
 
 <main class="main-content">
 
-    <h1>Image Gallery</h1>
+    <section class="hero">
 
+        <div class="hero-content">
 
-    <section class="card search-section">
+            <p class="eyebrow">
+                HOUSE MANAGER
+            </p>
 
-        <h2>Search Images</h2>
+            <h1>
+                Simple data management,
+                built for your team.
+            </h1>
 
-        <form
-            class="search-bar"
-            method="get"
-            action="/gallery"
-        >
+            <p class="hero-description">
+                Create, organize, and share structured information
+                through one clean and easy-to-use system.
+            </p>
 
-            <input
-                name="q"
-                type="search"
-                placeholder="Search by table, column, or image path..."
-                value="{{ search_query or '' }}"
-                aria-label="Search images"
-            >
+            <div class="hero-actions">
 
-            <button
-                type="submit"
-                class="btn btn-primary"
-            >
-                Search
-            </button>
+                <a href="/manager" class="btn btn-primary">
+                    Manager Login
+                </a>
 
-            {% if search_query %}
-            <a
-                href="/gallery"
-                class="btn btn-secondary"
-            >
-                Clear
-            </a>
-            {% endif %}
+                <a href="/viewer" class="btn btn-secondary">
+                    Viewer Access
+                </a>
 
-        </form>
+            </div>
 
-
-        {% if search_query %}
-
-        <div class="search-results">
-            Showing results for
-            <strong>"{{ search_query }}"</strong>
         </div>
-
-        {% endif %}
 
     </section>
 
 
     <section class="card">
 
-        <h2>Your Images</h2>
+        <div class="section-heading">
+            <p class="eyebrow">ACCESS</p>
+
+            <h2>
+                Choose how you want to use House Manager
+            </h2>
+        </div>
 
 
-        {% if images %}
+        <div class="role-grid">
 
-        <div class="gallery-container">
+            <a href="/manager" class="role-card">
 
-            {% for image in images %}
+                <div class="role-card-content">
 
-            <article class="gallery-item">
+                    <span class="role-label">
+                        MANAGEMENT
+                    </span>
 
-                <img
-                    src="{{ image.image_path }}"
-                    alt="{{ image.column_name }}"
-                    loading="lazy"
-                >
+                    <h3>
+                        Manager
+                    </h3>
 
-                <div class="gallery-item-info">
+                    <p>
+                        Create tables, organize information,
+                        manage records, and control shared data.
+                    </p>
 
-                    <div class="gallery-item-name">
-                        {{ image.column_name }}
-                    </div>
-
-                    <div class="gallery-item-meta">
-                        Table: {{ image.table_name }}
-                    </div>
-
-                    <div class="gallery-item-date">
-                        {{ image.uploaded_at[:10] if image.uploaded_at else 'Unknown date' }}
-                    </div>
+                    <span class="role-link">
+                        Open Manager
+                    </span>
 
                 </div>
 
-            </article>
-
-            {% endfor %}
-
-        </div>
+            </a>
 
 
-        {% else %}
+            <a href="/viewer" class="role-card">
 
-        <div class="no-images">
+                <div class="role-card-content">
 
-            {% if search_query %}
+                    <span class="role-label">
+                        SHARED ACCESS
+                    </span>
 
-                <h3>No images found</h3>
+                    <h3>
+                        Viewer
+                    </h3>
 
-                <p>
-                    No images matched your search.
-                </p>
+                    <p>
+                        Access information shared with you
+                        without needing management access.
+                    </p>
 
-                <a href="/gallery" class="table-link">
-                    Clear search
-                </a>
+                    <span class="role-link">
+                        Open Viewer
+                    </span>
 
-            {% else %}
+                </div>
 
-                <h3>No images yet</h3>
-
-                <p>
-                    Images uploaded through your tables will appear here.
-                </p>
-
-            {% endif %}
+            </a>
 
         </div>
-
-        {% endif %}
 
     </section>
 
@@ -165,10 +138,13 @@
 
 
 <footer class="footer">
+
     <div class="footer-content">
         <p>&copy; 2026 House Manager</p>
     </div>
+
 </footer>
 
 </body>
 </html>
+```
