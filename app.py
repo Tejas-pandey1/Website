@@ -1,16 +1,19 @@
 import os
+import mimetypes
 from datetime import datetime, timedelta, timezone
 from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 import json
 import base64
 
-from flask import Flask, render_template, request, redirect, jsonify, session
+from flask import Flask, render_template, request, redirect, jsonify, session, send_file, abort
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import threading
 import time
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class DatabaseSession(CallbackDict, SessionMixin):
@@ -109,10 +112,57 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def get_db():
-    db_path = os.path.join(os.getcwd(), "database.db")
+    db_path = os.path.join(BASE_DIR, "database.db")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+def normalize_image_path(path, db=None):
+    if not path:
+        return path
+    s = str(path).replace('\\', '/')
+    if s.startswith('/image/') or s.startswith('/static/') or s.startswith('http'):
+        return s
+
+    if db is not None:
+        row = db.execute("SELECT id FROM images WHERE file_path = ?", (s,)).fetchone()
+        if row:
+            return f"/image/{row['id']}"
+
+        fname = os.path.basename(s)
+        row = db.execute("SELECT id FROM images WHERE filename = ? ORDER BY id DESC LIMIT 1", (fname,)).fetchone()
+        if row:
+            return f"/image/{row['id']}"
+
+        row = db.execute("SELECT id FROM images WHERE file_path LIKE ? ORDER BY id DESC LIMIT 1", (f"%{fname}%",)).fetchone()
+        if row:
+            return f"/image/{row['id']}"
+
+    return s
+
+
+def save_uploaded_image(file, manager_id, db=None, column_id=None):
+    filename = secure_filename(file.filename)
+    if column_id is not None:
+        filename = f"{manager_id}_{column_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
+    else:
+        filename = f"{manager_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(file_path)
+    relative_path = f"/static/uploads/{filename}"
+
+    if db is not None:
+        cursor = db.cursor()
+        cursor.execute(
+            "INSERT INTO images (manager_id, filename, file_path) VALUES (?, ?, ?)",
+            (manager_id, file.filename, relative_path)
+        )
+        db.commit()
+        image_id = cursor.lastrowid
+        return relative_path, image_id
+
+    return relative_path, None
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -152,32 +202,6 @@ def get_cell_values(db, table_id):
         cols = db.execute("SELECT id, type FROM columns WHERE table_id=?", (table_id,)).fetchall()
         col_type_map = {c["id"]: c["type"] for c in cols}
 
-        def _normalize_image_value(val):
-            if not val:
-                return val
-            s = str(val)
-            s_norm = s.replace('\\', '/')
-            if s_norm.startswith('/image/') or s_norm.startswith('/static/') or s_norm.startswith('http'):
-                return s_norm
-
-            # exact match in images table
-            row = db.execute("SELECT id FROM images WHERE file_path = ?", (s_norm,)).fetchone()
-            if row:
-                return f"/image/{row['id']}"
-
-            # match by filename
-            fname = os.path.basename(s_norm)
-            row = db.execute("SELECT id FROM images WHERE filename = ? ORDER BY id DESC LIMIT 1", (fname,)).fetchone()
-            if row:
-                return f"/image/{row['id']}"
-
-            # fallback: LIKE search in file_path
-            row = db.execute("SELECT id FROM images WHERE file_path LIKE ? ORDER BY id DESC LIMIT 1", (f"%{fname}%",)).fetchone()
-            if row:
-                return f"/image/{row['id']}"
-
-            return s_norm
-
         for rid, cols_dict in nested.items():
             for cid, cell in list(cols_dict.items()):
                 try:
@@ -185,7 +209,7 @@ def get_cell_values(db, table_id):
                 except Exception:
                     ctype = None
                 if ctype == 'image' and cell and cell.get('value'):
-                    cols_dict[cid]['value'] = _normalize_image_value(cell.get('value'))
+                    cols_dict[cid]['value'] = normalize_image_path(cell.get('value'), db)
     except Exception:
         pass
 
@@ -719,11 +743,8 @@ def create_row(table_id):
                 file = request.files[file_key]
                 if file and file.filename and allowed_file(file.filename):
                     try:
-                        filename = secure_filename(file.filename)
-                        filename = f"{manager_id}_{col['id']}_{datetime.now(timezone.utc).timestamp()}_{filename}"
-                        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                        file.save(file_path)
-                        value = f"/{file_path}"
+                        rel_path, image_id = save_uploaded_image(file, manager_id, db, col['id'])
+                        value = f"/image/{image_id}" if image_id else rel_path
                     except Exception as e:
                         app.logger.error(f"Error uploading image: {e}")
         else:
@@ -812,12 +833,8 @@ def update_cell(row_id, column_id):
             file = request.files['value']
             if file and file.filename and allowed_file(file.filename):
                 try:
-                    filename = secure_filename(file.filename)
-                    filename = f"{manager_id}_{column_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
-                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    file.save(file_path)
-                    # Store relative URL path instead of absolute file path
-                    value = f"/static/uploads/{filename}"
+                    rel_path, image_id = save_uploaded_image(file, manager_id, db, column_id)
+                    value = f"/image/{image_id}" if image_id else rel_path
                 except Exception as e:
                     app.logger.error(f"Error uploading image: {e}")
         else:
@@ -919,19 +936,9 @@ def upload_image():
         return "File type not allowed. Allowed: png, jpg, jpeg, gif, webp", 400
     
     try:
-        filename = secure_filename(file.filename)
-        filename = f"{manager_id}_{datetime.now(timezone.utc).timestamp()}_{filename}"
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        db = get_db()
-        db.execute(
-            "INSERT INTO images (manager_id, filename, file_path) VALUES (?, ?, ?)",
-            (manager_id, file.filename, f"/{file_path}")
-        )
-        db.commit()
-        
-        return jsonify({"success": True, "filename": filename, "path": f"/{file_path}"})
+        rel_path, image_id = save_uploaded_image(file, manager_id, db)
+        response_path = f"/image/{image_id}" if image_id else rel_path
+        return jsonify({"success": True, "filename": os.path.basename(rel_path), "path": response_path})
     except Exception as e:
         app.logger.error(f"Error uploading image: {e}")
         return "Error uploading file", 500
@@ -984,25 +991,39 @@ def gallery():
         for img in images:
             imgd = dict(img)
             path = imgd.get('image_path') or imgd.get('file_path') or ''
-            # quick normalization similar to get_cell_values
-            p = str(path).replace('\\', '/')
-            if p.startswith('/image/') or p.startswith('/static/') or p.startswith('http'):
-                imgd['image_path'] = p
-            else:
-                # try to resolve via images table
-                found = db.execute("SELECT id FROM images WHERE file_path = ?", (p,)).fetchone()
-                if not found:
-                    fname = os.path.basename(p)
-                    found = db.execute("SELECT id FROM images WHERE filename = ? ORDER BY id DESC LIMIT 1", (fname,)).fetchone()
-                if found:
-                    imgd['image_path'] = f"/image/{found['id']}"
-                else:
-                    imgd['image_path'] = p
+            imgd['image_path'] = normalize_image_path(path, db)
             normalized_images.append(imgd)
     except Exception:
         normalized_images = [dict(i) for i in images]
 
     return render_template("gallery.html", images=normalized_images, search_query=search_query)
+
+
+@app.route('/image/<int:image_id>')
+def serve_image(image_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
+    if not row:
+        abort(404)
+
+    file_path = row['file_path']
+    if not file_path:
+        abort(404)
+
+    path = str(file_path).replace('\\', '/')
+    if path.startswith('/static/'):
+        local_path = os.path.join(BASE_DIR, *path.lstrip('/').split('/'))
+        if os.path.isfile(local_path):
+            mime_type = mimetypes.guess_type(local_path)[0] or 'application/octet-stream'
+            return send_file(local_path, mimetype=mime_type)
+
+    if os.path.isabs(path):
+        local_path = path
+        if os.path.isfile(local_path):
+            mime_type = mimetypes.guess_type(local_path)[0] or 'application/octet-stream'
+            return send_file(local_path, mimetype=mime_type)
+
+    abort(404)
 
 
 @app.before_request

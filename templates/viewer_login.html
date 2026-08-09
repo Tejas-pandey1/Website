@@ -4,46 +4,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Viewer Login - House Manager</title>
+
+    <title>Viewer Access | House Manager</title>
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
 <body>
-    <header class="header">
-        <nav class="nav-container">
-            <a href="/" class="logo">🏠 House Manager</a>
-            <div class="nav-links">
-                <a href="/" class="back-link">← Back to Home</a>
+
+<header class="header">
+
+    <nav class="nav-container">
+
+        <a href="/" class="logo">
+            House Manager
+        </a>
+
+        <div class="nav-links">
+
+            <a href="/" class="back-link">
+                Back to Home
+            </a>
+
+        </div>
+
+    </nav>
+
+</header>
+
+
+<main class="main-content">
+
+    <h1>Viewer Access</h1>
+
+
+    <section
+        class="card"
+        style="max-width: 420px; margin: 0 auto;"
+    >
+
+        <h2>Access Shared Data</h2>
+
+        <form action="/viewer_login" method="post">
+
+            <div class="form-group">
+
+                <label for="viewer-id">
+                    Viewer ID
+                </label>
+
+                <input
+                    id="viewer-id"
+                    name="viewer_id"
+                    type="text"
+                    autocomplete="username"
+                    placeholder="Enter your viewer ID"
+                    required
+                >
+
             </div>
-        </nav>
-    </header>
 
-    <main class="main-content">
-        <h1>Viewer Access</h1>
 
-        <div class="card" style="max-width: 400px; margin: 0 auto;">
-            <h2>Access Shared Data</h2>
+            <div class="form-group">
 
-            <form action="/viewer_login" method="post">
-                <div class="form-group">
-                    <label for="viewer-id">Viewer ID</label>
-                    <input id="viewer-id" name="viewer_id" placeholder="Enter your viewer ID" required>
-                </div>
+                <label for="viewer-password">
+                    Password
+                </label>
 
-                <div class="form-group">
-                    <label for="viewer-password">Password</label>
-                    <input id="viewer-password" name="password" type="password" placeholder="Enter your password" required>
-                </div>
+                <input
+                    id="viewer-password"
+                    name="password"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="Enter your password"
+                    required
+                >
 
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
-            </form>
-        </div>
-    </main>
+            </div>
 
-    <footer class="footer">
-        <div class="footer-content">
-            <p>&copy; 2026 House Manager. Secure viewer access portal.</p>
-        </div>
-    </footer>
+
+            <button
+                type="submit"
+                class="btn btn-primary"
+                style="width: 100%;"
+            >
+                Sign In
+            </button>
+
+        </form>
+
+    </section>
+
+</main>
+
+
+<footer class="footer">
+
+    <div class="footer-content">
+        <p>&copy; 2026 House Manager</p>
+    </div>
+
+</footer>
+
 </body>
 </html>

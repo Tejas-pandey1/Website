@@ -869,3 +869,39 @@ ul {
         white-space: nowrap;
     }
 }
+.role-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.role-actions .btn {
+    min-width: 160px;
+}
+
+.table-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.inline-form {
+    display: inline;
+}
+
+@media (max-width: 600px) {
+    .table-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .table-row .actions {
+        width: 100%;
+    }
+
+    .table-row .actions .btn {
+        flex: 1;
+    }
+}

@@ -1,0 +1,1 @@
+<sqlite3.Row object at 0x000001B04AB6D270>
