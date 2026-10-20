@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Viewer Access | House Manager</title>
+    <title>Manager Login | House Manager</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -35,7 +35,7 @@
 
 <main class="main-content">
 
-    <h1>Viewer Access</h1>
+    <h1>Manager Access</h1>
 
 
     <section
@@ -43,22 +43,34 @@
         style="max-width: 420px; margin: 0 auto;"
     >
 
-        <h2>Access Shared Data</h2>
+        <h2>Sign In</h2>
 
-        <form action="/viewer_login" method="post">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="form-message-stack">
+                    {% for category, message in messages %}
+                        <div class="form-message {% if category == 'error' %}form-error{% else %}form-success{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form action="/login" method="post">
 
             <div class="form-group">
 
-                <label for="viewer-id">
-                    Viewer ID
+                <label for="username">
+                    Username
                 </label>
 
                 <input
-                    id="viewer-id"
-                    name="viewer_id"
+                    id="username"
+                    name="username"
                     type="text"
                     autocomplete="username"
-                    placeholder="Enter your viewer ID"
+                    placeholder="Enter your username"
                     required
                 >
 
@@ -67,12 +79,12 @@
 
             <div class="form-group">
 
-                <label for="viewer-password">
+                <label for="password">
                     Password
                 </label>
 
                 <input
-                    id="viewer-password"
+                    id="password"
                     name="password"
                     type="password"
                     autocomplete="current-password"
@@ -92,6 +104,18 @@
             </button>
 
         </form>
+
+
+        <div class="mt-3 text-center">
+
+            <p>
+                Don't have an account?
+                <a href="/register" class="table-link">
+                    Create one
+                </a>
+            </p>
+
+        </div>
 
     </section>
 
