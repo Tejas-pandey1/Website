@@ -1,122 +1,775 @@
-<!DOCTYPE html>
-<html lang="en">
+/* =========================================================
+   HOUSE MANAGER
+   Dark Professional UI
+========================================================= */
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    <title>Viewer Access | House Manager</title>
+/* =========================================================
+   RESET
+========================================================= */
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
 
-<body>
+html {
+    scroll-behavior: smooth;
+}
 
-<header class="header">
+body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:
+        radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.08), transparent 30%),
+        radial-gradient(circle at 85% 20%, rgba(59, 130, 246, 0.05), transparent 30%),
+        #0b0f17;
+    color: #e5e7eb;
+    min-height: 100vh;
+    line-height: 1.6;
+}
 
-    <nav class="nav-container">
+a {
+    text-decoration: none;
+}
 
-        <a href="/" class="logo">
-            House Manager
-        </a>
+/* =========================================================
+   HEADER
+========================================================= */
 
-        <div class="nav-links">
+.header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: rgba(11, 15, 23, 0.88);
+    border-bottom: 1px solid #1e2633;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 1rem 0;
+}
 
-            <a href="/" class="back-link">
-                Back to Home
-            </a>
+.nav-container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
 
-        </div>
+.logo {
+    color: #f8fafc;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    transition: color 0.2s ease;
+}
 
-    </nav>
+.logo:hover {
+    color: #a5b4fc;
+}
 
-</header>
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.75rem;
+}
 
+.nav-links a {
+    color: #8b95a7;
+    font-size: 0.88rem;
+    font-weight: 500;
+    transition: color 0.2s ease, background 0.2s ease;
+}
 
-<main class="main-content">
+.nav-links a:hover {
+    color: #f8fafc;
+}
 
-    <h1>Viewer Access</h1>
+.nav-links .back-link {
+    color: #cbd5e1;
+    font-weight: 600;
+}
 
+/* =========================================================
+   MAIN
+========================================================= */
 
-    <section
-        class="card"
-        style="max-width: 420px; margin: 0 auto;"
-    >
+.main-content {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 3rem 2rem 5rem;
+    min-height: calc(100vh - 80px);
+}
 
-        <h2>Access Shared Data</h2>
+/* =========================================================
+   TYPOGRAPHY
+========================================================= */
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="form-message-stack">
-                    {% for category, message in messages %}
-                        <div class="form-message {% if category == 'error' %}form-error{% else %}form-success{% endif %}">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+h1 {
+    color: #f8fafc;
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.8px;
+    margin-bottom: 2rem;
+}
 
-        <form action="/viewer_login" method="post">
+h2 {
+    color: #f1f5f9;
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    margin-bottom: 1rem;
+}
 
-            <div class="form-group">
+h3 {
+    color: #e2e8f0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.7rem;
+}
 
-                <label for="viewer-id">
-                    Viewer ID
-                </label>
+p {
+    color: #94a3b8;
+}
 
-                <input
-                    id="viewer-id"
-                    name="viewer_id"
-                    type="text"
-                    autocomplete="username"
-                    placeholder="Enter your viewer ID"
-                    required
-                >
+/* =========================================================
+   HOME PAGE
+========================================================= */
 
-            </div>
+.hero {
+    position: relative;
+    padding: 5rem 0 4rem;
+    border-bottom: 1px solid #1e2633;
+    margin-bottom: 3rem;
+}
 
+.hero-content {
+    max-width: 780px;
+}
 
-            <div class="form-group">
+.eyebrow {
+    color: #818cf8;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
 
-                <label for="viewer-password">
-                    Password
-                </label>
+.hero h1 {
+    max-width: 760px;
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    line-height: 1.05;
+    letter-spacing: -2.5px;
+    margin-bottom: 1.5rem;
+}
 
-                <input
-                    id="viewer-password"
-                    name="password"
-                    type="password"
-                    autocomplete="current-password"
-                    placeholder="Enter your password"
-                    required
-                >
+.hero-description {
+    max-width: 650px;
+    color: #94a3b8;
+    font-size: 1.05rem;
+    line-height: 1.8;
+    margin-bottom: 2rem;
+}
 
-            </div>
+.hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
 
+/* =========================================================
+   HOME ROLE CARDS
+========================================================= */
 
-            <button
-                type="submit"
-                class="btn btn-primary"
-                style="width: 100%;"
-            >
-                Sign In
-            </button>
+.section-heading {
+    margin-bottom: 1.5rem;
+}
 
-        </form>
+.section-heading h2 {
+    max-width: 600px;
+    margin-bottom: 0;
+}
 
-    </section>
+.role-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
 
-</main>
+.role-card {
+    display: block;
+    padding: 1.75rem;
+    background: #111722;
+    border: 1px solid #202938;
+    border-radius: 14px;
+    text-decoration: none;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
 
+.role-card:hover {
+    transform: translateY(-3px);
+    background: #141b28;
+    border-color: #3a4659;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25);
+}
 
-<footer class="footer">
+.role-card-content {
+    max-width: 520px;
+}
 
-    <div class="footer-content">
-        <p>&copy; 2026 House Manager</p>
-    </div>
+.role-label {
+    display: block;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    margin-bottom: 0.65rem;
+}
 
-</footer>
+.role-card h3 {
+    color: #f8fafc;
+    font-size: 1.25rem;
+    margin-bottom: 0.6rem;
+}
 
-</body>
-</html>
+.role-card p {
+    color: #8b95a7;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+}
+
+.role-link {
+    color: #a5b4fc;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* =========================================================
+   CARDS
+========================================================= */
+
+.card {
+    background: rgba(17, 23, 34, 0.9);
+    border: 1px solid #202938;
+    border-radius: 14px;
+    padding: 1.75rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    border-color: #2d3748;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.card h2 {
+    margin-top: 0;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid #202938;
+}
+
+/* =========================================================
+   FORMS
+========================================================= */
+
+.form-section {
+    margin-bottom: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.35rem;
+}
+
+.form-group label {
+    display: block;
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.45rem;
+}
+
+.form-message-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin: 0.75rem 0 1rem;
+}
+
+.form-message {
+    padding: 0.8rem 0.9rem;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.form-error {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fecaca;
+}
+
+.form-success {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #a7f3d0;
+}
+
+input,
+select,
+textarea {
+    width: 100%;
+    padding: 0.75rem 0.9rem;
+    background: #0d131d;
+    color: #e5e7eb;
+    border: 1px solid #293345;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.92rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: #586579;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+    border-color: #3a4659;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    background: #101722;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.7rem 1.05rem;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    gap: 0.45rem;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn-primary {
+    background: #6366f1;
+    color: #ffffff;
+    border-color: #6366f1;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.18);
+}
+
+.btn-primary:hover {
+    background: #5558e8;
+    border-color: #5558e8;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.28);
+}
+
+.btn-secondary {
+    background: #151c28;
+    color: #cbd5e1;
+    border-color: #303b4e;
+}
+
+.btn-secondary:hover {
+    background: #1a2331;
+    border-color: #435066;
+}
+
+.btn-danger {
+    background: rgba(127, 29, 29, 0.12);
+    color: #fca5a5;
+    border-color: #5b252b;
+}
+
+.btn-danger:hover {
+    background: rgba(127, 29, 29, 0.25);
+    border-color: #7f3038;
+}
+
+.btn-success {
+    background: #059669;
+    color: #ffffff;
+    border-color: #059669;
+}
+
+.btn-success:hover {
+    background: #047857;
+    border-color: #047857;
+}
+
+button {
+    padding: 0.7rem 1.05rem;
+    border: 1px solid #6366f1;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: #6366f1;
+    color: #ffffff;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+button:hover {
+    background: #5558e8;
+    border-color: #5558e8;
+}
+
+button.danger {
+    background: rgba(127, 29, 29, 0.12);
+    color: #fca5a5;
+    border-color: #5b252b;
+}
+
+button.danger:hover {
+    background: rgba(127, 29, 29, 0.25);
+}
+
+/* =========================================================
+   TABS
+========================================================= */
+
+.tab-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: 1.5rem;
+    padding: 0.25rem;
+    width: fit-content;
+    background: #111722;
+    border: 1px solid #202938;
+    border-radius: 9px;
+}
+
+.tab-button {
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.84rem;
+    color: #7f8ba0;
+    transition: 0.2s ease;
+}
+
+.tab-button:hover {
+    background: #1a2331;
+    color: #cbd5e1;
+}
+
+.tab-button.active {
+    background: #252e3d;
+    color: #f1f5f9;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.tab-button.danger {
+    background: transparent;
+    color: #f87171;
+}
+
+.tab-button.danger:hover {
+    background: rgba(127, 29, 29, 0.18);
+}
+
+.tab-panel {
+    animation: fadeIn 0.2s ease;
+    margin-bottom: 2rem;
+}
+
+/* =========================================================
+   TABLES
+========================================================= */
+
+.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 1rem;
+    background: #111722;
+    border: 1px solid #202938;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.12);
+}
+
+.data-table th,
+.data-table td {
+    padding: 0.9rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #202938;
+}
+
+.data-table th {
+    background: #151c28;
+    color: #7f8ba0;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+}
+
+.data-table td {
+    color: #cbd5e1;
+    font-size: 0.9rem;
+}
+
+.data-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.data-table tbody tr:hover {
+    background: #151c28;
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.data-table .actions {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+/* =========================================================
+   LISTS
+========================================================= */
+
+ul {
+    list-style: none;
+}
+
+.table-list li {
+    background: #111722;
+    border: 1px solid #202938;
+    border-radius: 10px;
+    padding: 1.2rem 1.35rem;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.table-list li:hover {
+    background: #141b27;
+    border-color: #344054;
+    box-shadow: 0 5px 18px rgba(0, 0, 0, 0.15);
+}
+
+.table-link {
+    color: #e2e8f0;
+    font-weight: 600;
+    font-size: 0.92rem;
+    transition: color 0.2s ease;
+}
+
+.table-link:hover {
+    color: #a5b4fc;
+}
+
+/* =========================================================
+   TABLE ROWS
+========================================================= */
+
+.table-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.inline-form {
+    display: inline;
+}
+
+/* =========================================================
+   SEARCH
+========================================================= */
+
+.search-bar {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.search-bar input {
+    flex: 1;
+    min-width: 220px;
+    max-width: 450px;
+}
+
+.search-bar .btn {
+    white-space: nowrap;
+}
+
+.search-results {
+    color: #7f8ba0;
+    font-size: 0.85rem;
+    margin-top: 0.75rem;
+}
+
+/* =========================================================
+   GALLERY
+========================================================= */
+
+.gallery-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    padding: 0.5rem 0;
+}
+
+.gallery-item {
+    overflow: hidden;
+    background: #111722;
+    border: 1px solid #202938;
+    border-radius: 12px;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gallery-item:hover {
+    transform: translateY(-3px);
+    border-color: #364258;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+}
+
+.gallery-item img {
+    display: block;
+    width: 100%;
+    height: 210px;
+    object-fit: cover;
+    background: #0d131d;
+}
+
+.gallery-item-info {
+    padding: 1rem;
+}
+
+.gallery-item-name {
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    word-break: break-word;
+    margin-bottom: 0.3rem;
+}
+
+.gallery-item-meta {
+    color: #7f8ba0;
+    font-size: 0.78rem;
+    margin-bottom: 0.25rem;
+}
+
+.gallery-item-date {
+    color: #586579;
+    font-size: 0.72rem;
+}
+
+.no-images {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: #7f8ba0;
+}
+
+/* =========================================================
+   AUTO SETTINGS
+========================================================= */
+
+.auto-settings {
+    background: #0f151f;
+    border: 1px solid #202938;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 0.5rem;
+}
+
+.auto-options {
+    margin-top: 0.75rem;
+    padding-left: 1rem;
+    border-left: 2px solid #303b4e;
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+.footer {
+    background: #090d14;
+    border-top: 1px solid #1e2633;
+    padding: 1.75rem 0;
+    margin-top: 3rem;
+}
+
+.footer-content {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    text-align: center;
+    color: #586579;
+}
+
+.footer-content p {
+    margin: 0;
+}
+
+/* =========================================================
+   Extra utility classes
+========================================================= */
+
+.mt-3 {
+    margin-top: 1rem;
+}
+
+.text-center {
+    text-align: center;
+}
+
+@media (max-width: 768px) {
+    .nav-container {
+        padding: 0 1rem;
+    }
+
+    .main-content {
+        padding: 2rem 1rem 4rem;
+    }
+
+    .role-grid {
+        grid-template-columns: 1fr;
+    }
+}
