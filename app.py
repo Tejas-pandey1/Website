@@ -6,7 +6,7 @@ from werkzeug.datastructures import CallbackDict
 import json
 import base64
 
-from flask import Flask, render_template, request, redirect, jsonify, session, send_file, abort
+from flask import Flask, render_template, request, redirect, jsonify, session, send_file, abort, flash
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -45,8 +45,8 @@ class DatabaseSessionInterface(SessionInterface):
 
         conn = self.get_db()
         cur = conn.cursor()
-        cur.execute("SELECT data FROM sessions WHERE session_id = ? AND expiry > ?", 
-                   (sid, datetime.now(timezone.utc)))
+        cur.execute("SELECT data FROM sessions WHERE session_id = ? AND expiry > ?",
+                    (sid, datetime.now(timezone.utc)))
         row = cur.fetchone()
         conn.close()
 
@@ -54,7 +54,7 @@ class DatabaseSessionInterface(SessionInterface):
             try:
                 data = json.loads(row[0])
                 return DatabaseSession(data, sid=sid)
-            except:
+            except Exception:
                 pass
 
         return DatabaseSession(sid=sid)
@@ -75,18 +75,12 @@ class DatabaseSessionInterface(SessionInterface):
         conn = self.get_db()
         cur = conn.cursor()
 
-        # Clean up expired sessions
         cur.execute("DELETE FROM sessions WHERE expiry < ?", (datetime.now(timezone.utc),))
-
-        # Calculate expiry
         expiry = datetime.now(timezone.utc) + timedelta(days=30)
-
-        # Serialize session data
         data = json.dumps(dict(session))
 
-        # Store session
         cur.execute("""
-            INSERT OR REPLACE INTO sessions (session_id, data, expiry) 
+            INSERT OR REPLACE INTO sessions (session_id, data, expiry)
             VALUES (?, ?, ?)
         """, (session.sid, data, expiry))
 
@@ -94,28 +88,28 @@ class DatabaseSessionInterface(SessionInterface):
         conn.close()
 
         response.set_cookie(name, session.sid,
-                          expires=expiry, httponly=True, domain=domain, path=path)
+                            expires=expiry, httponly=True, domain=domain, path=path)
 
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-super-secret-key-change-in-production-really-do-it")
 app.session_interface = DatabaseSessionInterface()
 
-# Image upload configuration
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'static', 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# Create upload folder if it doesn't exist
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 def get_db():
     db_path = os.path.join(BASE_DIR, "database.db")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def normalize_image_path(path, db=None):
     if not path:
@@ -167,6 +161,7 @@ def save_uploaded_image(file, manager_id, db=None, column_id=None):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 from database_setup import main as setup_db
 setup_db()
 
@@ -183,7 +178,6 @@ background_thread_started = False
 
 
 def get_cell_values(db, table_id):
-    """Return a dict keyed by (row_id, column_id) -> cell data."""
     rows = db.execute("SELECT id FROM rows WHERE table_id=?", (table_id,)).fetchall()
     if not rows:
         return {}
@@ -197,7 +191,7 @@ def get_cell_values(db, table_id):
     nested = {}
     for v in values:
         nested.setdefault(v["row_id"], {})[v["column_id"]] = v
-    # Normalize image paths for image columns so templates receive usable URLs
+
     try:
         cols = db.execute("SELECT id, type FROM columns WHERE table_id=?", (table_id,)).fetchall()
         col_type_map = {c["id"]: c["type"] for c in cols}
@@ -217,9 +211,7 @@ def get_cell_values(db, table_id):
 
 
 def apply_auto_updates():
-    """Apply automatic changes for cells configured to auto update over time."""
     db = get_db()
-
     cells = db.execute(
         "SELECT * FROM cell_values WHERE auto_change=1 AND change_amount IS NOT NULL"
     ).fetchall()
@@ -228,7 +220,6 @@ def apply_auto_updates():
         return
 
     now = datetime.now(timezone.utc)
-
     interval_seconds = {
         "hour": 60 * 60,
         "day": 60 * 60 * 24,
@@ -326,9 +317,12 @@ def viewer_login_page():
 
 @app.route("/viewer_login", methods=["POST"])
 def viewer_login():
-
     viewer_id = request.form.get("viewer_id")
     password = request.form.get("password")
+
+    if not viewer_id or not password:
+        flash("Viewer ID and password are required.", "error")
+        return redirect("/viewer")
 
     db = get_db()
     viewer = db.execute(
@@ -339,12 +333,12 @@ def viewer_login():
     if viewer:
         return redirect(f"/viewer/{viewer_id}")
 
-    return "Viewer login failed"
+    flash("Invalid viewer ID or password.", "error")
+    return redirect("/viewer")
 
 
 @app.route("/viewer/<viewer_id>")
 def viewer_view(viewer_id):
-
     db = get_db()
     viewer = db.execute(
         "SELECT * FROM viewers WHERE viewer_id=?",
@@ -388,10 +382,10 @@ def login():
         password = request.form.get("password")
 
         if not username or not password:
-            return "Username and password are required", 400
+            flash("Username and password are required.", "error")
+            return redirect("/manager")
 
         db = get_db()
-
         user = db.execute(
             "SELECT * FROM managers WHERE username=?",
             (username,),
@@ -400,16 +394,18 @@ def login():
         if user and check_password_hash(user["password"], password):
             session["manager_id"] = user["id"]
             session["username"] = user["username"]
-            session.permanent = True  # Make session persistent
+            session.permanent = True
             app.logger.info(f"User logged in: {username}")
             return redirect("/dashboard")
-        else:
-            app.logger.warning(f"Failed login attempt for username: {username}")
-            return "Invalid username or password", 401
+
+        app.logger.warning(f"Failed login attempt for username: {username}")
+        flash("Invalid username or password.", "error")
+        return redirect("/manager")
 
     except Exception as e:
         app.logger.error(f"Error in login: {e}")
-        return "Internal Server Error", 500
+        flash("Something went wrong while signing in. Please try again.", "error")
+        return redirect("/manager")
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -420,32 +416,31 @@ def register():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "").strip()
 
-    # Validation
     if not username or not password:
-        return "Username and password are required", 400
+        flash("Username and password are required.", "error")
+        return redirect("/register")
 
     if len(username) < 3:
-        return "Username must be at least 3 characters long", 400
+        flash("Username must be at least 3 characters long.", "error")
+        return redirect("/register")
 
     if len(password) < 6:
-        return "Password must be at least 6 characters long", 400
+        flash("Password must be at least 6 characters long.", "error")
+        return redirect("/register")
 
-    # Hash the password
     hashed_password = generate_password_hash(password)
-
     db = get_db()
 
     try:
-        # Check if username already exists
         existing_user = db.execute(
             "SELECT id FROM managers WHERE username = ?",
             (username,)
         ).fetchone()
 
         if existing_user:
-            return "Username already exists. Please choose a different username.", 400
+            flash("Username already exists. Please choose a different username.", "error")
+            return redirect("/register")
 
-        # Insert new user
         db.execute(
             "INSERT INTO managers (username, password) VALUES (?, ?)",
             (username, hashed_password)
@@ -453,11 +448,13 @@ def register():
         db.commit()
 
         app.logger.info(f"New user registered: {username}")
+        flash("Account created successfully. Please sign in.", "success")
         return redirect("/manager")
 
     except Exception as e:
         app.logger.error(f"Error registering user: {e}")
-        return "Registration failed. Please try again.", 500
+        flash("Registration failed. Please try again.", "error")
+        return redirect("/register")
 
 
 @app.route("/logout")
@@ -465,17 +462,15 @@ def logout():
     session.clear()
     session.pop('manager_id', None)
     session.pop('username', None)
+    flash("You have been signed out.", "success")
     return redirect("/")
 
 
 @app.route("/debug")
 def debug():
-    """Debug route to check session and database status"""
     db = get_db()
     users = db.execute("SELECT id, username FROM managers").fetchall()
-    
     user_list = "".join(f"<li>{user['username']} (ID: {user['id']})</li>" for user in users)
-    
     return f"""
     <h1>Debug Info</h1>
     <p>Session: {dict(session)}</p>
@@ -486,7 +481,6 @@ def debug():
 
 @app.route("/dashboard")
 def dashboard():
-
     login_check = require_login()
     if login_check:
         return login_check
@@ -512,13 +506,11 @@ def dashboard():
 
 @app.route("/table/<int:table_id>")
 def open_table(table_id):
-
     login_check = require_login()
     if login_check:
         return login_check
 
     manager_id = get_current_manager_id()
-
     q = request.args.get("q", "").strip()
 
     db = get_db()
@@ -545,6 +537,7 @@ def open_table(table_id):
 
     if q:
         q_lower = q.lower()
+
         def row_matches(row):
             if q_lower in str(row["id"]).lower():
                 return True
@@ -553,6 +546,7 @@ def open_table(table_id):
                 if v is not None and q_lower in str(v).lower():
                     return True
             return False
+
         rows = [r for r in rows if row_matches(r)]
 
     return render_template(
@@ -582,7 +576,6 @@ def delete_table(table_id):
     if not table:
         return "Table not found or access denied", 404
 
-    # Delete everything related to this table
     db.execute("DELETE FROM viewers WHERE table_id=?", (table_id,))
     rows = db.execute("SELECT id FROM rows WHERE table_id=?", (table_id,)).fetchall()
     row_ids = [r["id"] for r in rows]
@@ -625,21 +618,18 @@ def delete_row(row_id):
 
     if 'X-Requested-With' in request.headers:
         return jsonify({"success": True})
-    else:
-        if table_id:
-            return redirect(f"/table/{table_id}")
-        return redirect("/dashboard")
+    if table_id:
+        return redirect(f"/table/{table_id}")
+    return redirect("/dashboard")
 
 
 @app.route("/create_column/<int:table_id>", methods=["POST"])
 def create_column(table_id):
-
     login_check = require_login()
     if login_check:
         return login_check
 
     manager_id = get_current_manager_id()
-
     db = get_db()
     table = db.execute(
         "SELECT * FROM tables WHERE id=? AND manager_id=?",
@@ -652,7 +642,6 @@ def create_column(table_id):
     name = request.form.get("name")
     col_type = request.form.get("type", "text")
 
-    # For non-number columns, ignore auto-generation settings
     if col_type != "number":
         edit_mode = "direct"
         auto_change = 0
@@ -662,8 +651,8 @@ def create_column(table_id):
     else:
         edit_mode = request.form.get("edit_mode", "direct")
         auto_change = 1 if request.form.get("auto_change") == "on" else 0
-        change_type = None  # Now per-cell
-        change_amount = None  # Now per-cell
+        change_type = None
+        change_amount = None
         time_interval = request.form.get("time_interval")
 
         if change_amount:
@@ -671,8 +660,6 @@ def create_column(table_id):
                 change_amount = float(change_amount)
             except Exception:
                 change_amount = None
-
-    db = get_db()
 
     db.execute(
         "INSERT INTO columns (table_id, name, type, auto_change, change_type, change_amount, time_interval, edit_mode) VALUES (?,?,?,?,?,?,?,?)",
@@ -688,7 +675,6 @@ def create_column(table_id):
         ),
     )
 
-    # Ensure existing rows have a placeholder value for the new column
     col_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
     rows = db.execute("SELECT id FROM rows WHERE table_id=?", (table_id,)).fetchall()
     for r in rows:
@@ -698,13 +684,11 @@ def create_column(table_id):
         )
 
     db.commit()
-
     return redirect(f"/table/{table_id}")
 
 
 @app.route("/create_row/<int:table_id>", methods=["POST"])
 def create_row(table_id):
-
     login_check = require_login()
     if login_check:
         return login_check
@@ -721,7 +705,6 @@ def create_row(table_id):
         return "Table not found or access denied", 404
 
     cursor = db.cursor()
-
     cursor.execute(
         "INSERT INTO rows (table_id) VALUES (?)",
         (table_id,),
@@ -729,14 +712,12 @@ def create_row(table_id):
     row_id = cursor.lastrowid
 
     columns = db.execute(
-        "SELECT * FROM columns WHERE table_id= ?",
+        "SELECT * FROM columns WHERE table_id=?",
         (table_id,),
     ).fetchall()
 
     for col in columns:
         value = ""
-        
-        # Handle image uploads
         if col["type"] == "image":
             file_key = f"col_{col['id']}"
             if file_key in request.files:
@@ -749,7 +730,7 @@ def create_row(table_id):
                         app.logger.error(f"Error uploading image: {e}")
         else:
             value = request.form.get(f"col_{col['id']}", "")
-        
+
         auto_change = 1 if col["auto_change"] and col["type"] == "number" else 0
         change_type = request.form.get(f"change_type_{col['id']}") if auto_change else None
         change_amount_str = request.form.get(f"change_amount_{col['id']}") if auto_change else None
@@ -767,13 +748,11 @@ def create_row(table_id):
         )
 
     db.commit()
-
     return redirect(f"/table/{table_id}")
 
 
 @app.route("/create_viewer", methods=["POST"])
 def create_viewer():
-
     login_check = require_login()
     if login_check:
         return login_check
@@ -804,7 +783,6 @@ def create_viewer():
 
 @app.route("/update_cell/<int:row_id>/<int:column_id>", methods=["POST"])
 def update_cell(row_id, column_id):
-
     login_check = require_login()
     if login_check:
         return login_check
@@ -826,8 +804,7 @@ def update_cell(row_id, column_id):
     ).fetchone()
 
     value = ""
-    
-    # Handle image uploads
+
     if column["type"] == "image":
         if 'value' in request.files:
             file = request.files['value']
@@ -838,7 +815,6 @@ def update_cell(row_id, column_id):
                 except Exception as e:
                     app.logger.error(f"Error uploading image: {e}")
         else:
-            # If no new file, keep existing value
             value = existing["value"] if existing else ""
     else:
         value = request.form.get("value", "")
@@ -881,22 +857,19 @@ def update_cell(row_id, column_id):
 
     if 'X-Requested-With' in request.headers:
         return jsonify({"success": True})
-    else:
-        # Redirect back to the table view
-        table = db.execute(
-            "SELECT table_id FROM rows WHERE id=?",
-            (row_id,),
-        ).fetchone()
-        table_id = table["table_id"] if table else None
-        if table_id:
-            return redirect(f"/table/{table_id}")
 
-        return redirect("/dashboard")
+    table = db.execute(
+        "SELECT table_id FROM rows WHERE id=?",
+        (row_id,),
+    ).fetchone()
+    table_id = table["table_id"] if table else None
+    if table_id:
+        return redirect(f"/table/{table_id}")
+    return redirect("/dashboard")
 
 
 @app.route("/create_table", methods=["POST"])
 def create_table():
-
     login_check = require_login()
     if login_check:
         return login_check
@@ -905,12 +878,10 @@ def create_table():
     name = request.form["name"]
 
     db = get_db()
-
     db.execute(
         "INSERT INTO tables (name, manager_id) VALUES (?, ?)",
         (name, manager_id),
     )
-
     db.commit()
 
     return redirect("/dashboard")
@@ -923,20 +894,20 @@ def upload_image():
         return login_check
 
     manager_id = get_current_manager_id()
-    
+
     if 'file' not in request.files:
         return "No file provided", 400
-    
+
     file = request.files['file']
-    
+
     if file.filename == '':
         return "No file selected", 400
-    
+
     if not allowed_file(file.filename):
         return "File type not allowed. Allowed: png, jpg, jpeg, gif, webp", 400
-    
+
     try:
-        rel_path, image_id = save_uploaded_image(file, manager_id, db)
+        rel_path, image_id = save_uploaded_image(file, manager_id, get_db())
         response_path = f"/image/{image_id}" if image_id else rel_path
         return jsonify({"success": True, "filename": os.path.basename(rel_path), "path": response_path})
     except Exception as e:
@@ -949,14 +920,11 @@ def gallery():
     login_check = require_login()
     if login_check:
         return login_check
-    
+
     manager_id = get_current_manager_id()
     db = get_db()
-    
-    # Get search query
     search_query = request.args.get('q', '').strip()
-    
-    # Get all images from data tables
+
     query = """
         SELECT 
             cv.value as image_path,
@@ -969,23 +937,22 @@ def gallery():
         JOIN columns c ON cv.column_id = c.id
         JOIN tables t ON c.table_id = t.id
         JOIN rows r ON cv.row_id = r.id
-        WHERE t.manager_id = ? 
-        AND c.type = 'image' 
-        AND cv.value != '' 
+        WHERE t.manager_id = ?
+        AND c.type = 'image'
+        AND cv.value != ''
         AND cv.value IS NOT NULL
     """
-    
+
     params = [manager_id]
-    
+
     if search_query:
         query += " AND (t.name LIKE ? OR c.name LIKE ? OR cv.value LIKE ?)"
         search_param = f"%{search_query}%"
         params.extend([search_param, search_param, search_param])
-    
+
     query += " ORDER BY r.created_at DESC"
-    
+
     images = db.execute(query, params).fetchall()
-    # Normalize returned image paths to ensure browser-friendly URLs
     normalized_images = []
     try:
         for img in images:
@@ -1030,7 +997,6 @@ def serve_image(image_id):
 def _start_background_tasks():
     global background_thread_started
     if not background_thread_started:
-        # Start the auto-update thread once per process.
         start_auto_update_thread()
         background_thread_started = True
 
