@@ -33,7 +33,7 @@ class DatabaseSessionInterface(SessionInterface):
         pass
 
     def get_db(self):
-        db_path = os.path.join(os.getcwd(), "database.db")
+        db_path = os.path.join(BASE_DIR, "database.db")
         conn = sqlite3.connect(db_path)
         return conn
 
@@ -95,7 +95,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-super-secret-key-change-in-production-really-do-it")
 app.session_interface = DatabaseSessionInterface()
 
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'static', 'uploads')
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
