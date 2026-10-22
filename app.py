@@ -61,7 +61,9 @@ class DatabaseSessionInterface(SessionInterface):
             except (TypeError, ValueError, json.JSONDecodeError):
                 pass
 
-        return DatabaseSession(sid=sid)
+        # Never reuse an expired or invalid session identifier.
+        new_sid = base64.b64encode(os.urandom(24)).decode("utf-8")
+        return DatabaseSession(sid=new_sid)
 
     def save_session(self, app, session, response):
         domain = self.get_cookie_domain(app)
@@ -372,6 +374,7 @@ def viewer_login():
 
         if valid_password:
             session.clear()
+            session.sid = base64.b64encode(os.urandom(24)).decode("utf-8")
             session["viewer_id"] = viewer_id
             session.permanent = True
             return redirect(f"/viewer/{viewer_id}")
@@ -402,8 +405,8 @@ def viewer_view(viewer_id):
     ).fetchone()
 
     row = db.execute(
-        "SELECT * FROM rows WHERE id=?",
-        (viewer["row_id"],),
+        "SELECT * FROM rows WHERE id=? AND table_id=?",
+        (viewer["row_id"], viewer["table_id"]),
     ).fetchone()
 
     columns = db.execute(
@@ -444,7 +447,11 @@ def login():
             (username,),
         ).fetchone()
 
+        db.close()
+
         if user and check_password_hash(user["password"], password):
+            session.clear()
+            session.sid = base64.b64encode(os.urandom(24)).decode("utf-8")
             session["manager_id"] = user["id"]
             session["username"] = user["username"]
             session.permanent = True
