@@ -12,7 +12,8 @@ def add_column_if_not_exists(conn, table_name, column_name, definition):
 
 
 def main():
-    db_path = os.path.join(os.getcwd(), "database.db")
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    db_path = os.path.join(base_dir, "database.db")
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
