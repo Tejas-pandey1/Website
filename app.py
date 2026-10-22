@@ -45,16 +45,20 @@ class DatabaseSessionInterface(SessionInterface):
 
         conn = self.get_db()
         cur = conn.cursor()
-        cur.execute("SELECT data FROM sessions WHERE session_id = ? AND expiry > ?",
-                    (sid, datetime.now(timezone.utc)))
+        cur.execute("SELECT data, expiry FROM sessions WHERE session_id = ?", (sid,))
         row = cur.fetchone()
         conn.close()
 
         if row:
             try:
-                data = json.loads(row[0])
-                return DatabaseSession(data, sid=sid)
-            except Exception:
+                expiry = row[1]
+                if isinstance(expiry, str):
+                    expiry = datetime.fromisoformat(expiry)
+                if expiry and expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=timezone.utc)
+                if expiry and expiry > datetime.now(timezone.utc):
+                    return DatabaseSession(json.loads(row[0]), sid=sid)
+            except (TypeError, ValueError, json.JSONDecodeError):
                 pass
 
         return DatabaseSession(sid=sid)
@@ -75,24 +79,39 @@ class DatabaseSessionInterface(SessionInterface):
         conn = self.get_db()
         cur = conn.cursor()
 
-        cur.execute("DELETE FROM sessions WHERE expiry < ?", (datetime.now(timezone.utc),))
         expiry = datetime.now(timezone.utc) + timedelta(days=30)
-        data = json.dumps(dict(session))
+        now = datetime.now(timezone.utc)
+        cur.execute("SELECT session_id, expiry FROM sessions")
+        for existing_sid, existing_expiry in cur.fetchall():
+            try:
+                parsed = datetime.fromisoformat(existing_expiry) if isinstance(existing_expiry, str) else existing_expiry
+                if parsed and parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                if not parsed or parsed <= now:
+                    cur.execute("DELETE FROM sessions WHERE session_id=?", (existing_sid,))
+            except (TypeError, ValueError):
+                cur.execute("DELETE FROM sessions WHERE session_id=?", (existing_sid,))
 
+        data = json.dumps(dict(session))
         cur.execute("""
             INSERT OR REPLACE INTO sessions (session_id, data, expiry)
             VALUES (?, ?, ?)
-        """, (session.sid, data, expiry))
+        """, (session.sid, data, expiry.isoformat()))
 
         conn.commit()
         conn.close()
 
-        response.set_cookie(name, session.sid,
-                            expires=expiry, httponly=True, domain=domain, path=path)
+        response.set_cookie(
+            name, session.sid, expires=expiry, httponly=True,
+            secure=os.environ.get("COOKIE_SECURE", "").lower() in {"1", "true", "yes"},
+            samesite="Lax", domain=domain, path=path
+        )
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "your-super-secret-key-change-in-production-really-do-it")
+app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-this-secret-before-deployment")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.session_interface = DatabaseSessionInterface()
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
@@ -325,13 +344,37 @@ def viewer_login():
         return redirect("/viewer")
 
     db = get_db()
+    viewer_id = viewer_id.strip()
     viewer = db.execute(
-        "SELECT * FROM viewers WHERE viewer_id=? AND password=?",
-        (viewer_id, password),
+        "SELECT * FROM viewers WHERE viewer_id=?",
+        (viewer_id,),
     ).fetchone()
+    db.close()
 
     if viewer:
-        return redirect(f"/viewer/{viewer_id}")
+        stored_password = viewer["password"] or ""
+        valid_password = False
+        try:
+            valid_password = check_password_hash(stored_password, password)
+        except (ValueError, TypeError):
+            valid_password = False
+
+        # Upgrade legacy plaintext passwords after a successful login.
+        if not valid_password and stored_password == password:
+            valid_password = True
+            db = get_db()
+            db.execute(
+                "UPDATE viewers SET password=? WHERE viewer_id=? AND password=?",
+                (generate_password_hash(password), viewer_id, stored_password),
+            )
+            db.commit()
+            db.close()
+
+        if valid_password:
+            session.clear()
+            session["viewer_id"] = viewer_id
+            session.permanent = True
+            return redirect(f"/viewer/{viewer_id}")
 
     flash("Invalid viewer ID or password.", "error")
     return redirect("/viewer")
@@ -339,6 +382,9 @@ def viewer_login():
 
 @app.route("/viewer/<viewer_id>")
 def viewer_view(viewer_id):
+    if session.get("viewer_id") != viewer_id:
+        return redirect("/viewer")
+
     db = get_db()
     viewer = db.execute(
         "SELECT * FROM viewers WHERE viewer_id=?",
@@ -346,7 +392,9 @@ def viewer_view(viewer_id):
     ).fetchone()
 
     if not viewer:
-        return "Viewer not found"
+        session.pop("viewer_id", None)
+        db.close()
+        return redirect("/viewer")
 
     table = db.execute(
         "SELECT * FROM tables WHERE id=?",
@@ -363,7 +411,12 @@ def viewer_view(viewer_id):
         (viewer["table_id"],),
     ).fetchall()
 
+    if not table or not row:
+        db.close()
+        return "Viewer data is no longer available.", 404
+
     cell_values = get_cell_values(db, viewer["table_id"])
+    db.close()
 
     return render_template(
         "viewer_view.html",
@@ -460,10 +513,15 @@ def register():
 @app.route("/logout")
 def logout():
     session.clear()
-    session.pop('manager_id', None)
-    session.pop('username', None)
     flash("You have been signed out.", "success")
     return redirect("/")
+
+
+@app.route("/viewer_logout")
+def viewer_logout():
+    session.clear()
+    flash("You have been signed out.", "success")
+    return redirect("/viewer")
 
 
 @app.route("/debug")
@@ -772,11 +830,35 @@ def create_viewer():
     if not table:
         return "Table not found or access denied", 404
 
-    db.execute(
-        "INSERT INTO viewers (viewer_id, password, table_id, row_id) VALUES (?, ?, ?, ?)",
-        (viewer_id, password, table_id, row_id),
-    )
-    db.commit()
+    viewer_id = (viewer_id or "").strip()
+    password = password or ""
+    row_id = (row_id or "").strip()
+
+    if len(viewer_id) < 3 or len(password) < 6:
+        flash("Viewer ID must be at least 3 characters and password at least 6 characters.", "error")
+        db.close()
+        return redirect(f"/table/{table_id}")
+
+    row = db.execute(
+        "SELECT id FROM rows WHERE id=? AND table_id=?",
+        (row_id, table_id),
+    ).fetchone()
+    if not row:
+        flash("Choose a valid row for this viewer.", "error")
+        db.close()
+        return redirect(f"/table/{table_id}")
+
+    try:
+        db.execute(
+            "INSERT INTO viewers (viewer_id, password, table_id, row_id) VALUES (?, ?, ?, ?)",
+            (viewer_id, generate_password_hash(password), table_id, row_id),
+        )
+        db.commit()
+        flash("Viewer access created successfully.", "success")
+    except sqlite3.IntegrityError:
+        flash("That Viewer ID already exists. Choose a different one.", "error")
+    finally:
+        db.close()
 
     return redirect(f"/table/{table_id}")
 
