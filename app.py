@@ -433,39 +433,66 @@ def viewer_view(viewer_id):
 
 @app.route("/login", methods=["POST"])
 def login():
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+
+    if not username or not password:
+        flash("Username and password are required.", "error")
+        return redirect("/manager")
+
+    db = None
     try:
-        username = request.form.get("username")
-        password = request.form.get("password")
-
-        if not username or not password:
-            flash("Username and password are required.", "error")
-            return redirect("/manager")
-
         db = get_db()
         user = db.execute(
-            "SELECT * FROM managers WHERE username=?",
+            "SELECT id, username, password FROM managers WHERE username=?",
             (username,),
         ).fetchone()
 
-        db.close()
+        if not user:
+            flash("Invalid username or password.", "error")
+            return redirect("/manager")
 
-        if user and check_password_hash(user["password"], password):
-            session.clear()
-            session.sid = base64.b64encode(os.urandom(24)).decode("utf-8")
-            session["manager_id"] = user["id"]
-            session["username"] = user["username"]
-            session.permanent = True
-            app.logger.info(f"User logged in: {username}")
-            return redirect("/dashboard")
+        stored_password = user["password"] or ""
+        valid_password = False
+        try:
+            valid_password = check_password_hash(stored_password, password)
+        except (ValueError, TypeError):
+            valid_password = False
 
-        app.logger.warning(f"Failed login attempt for username: {username}")
-        flash("Invalid username or password.", "error")
+        # Support accounts created by older versions that stored plaintext passwords,
+        # and upgrade the password to a hash after the owner signs in successfully.
+        if not valid_password and stored_password == password:
+            valid_password = True
+            db.execute(
+                "UPDATE managers SET password=? WHERE id=?",
+                (generate_password_hash(password), user["id"]),
+            )
+            db.commit()
+
+        if not valid_password:
+            app.logger.warning("Failed manager login attempt for username: %s", username)
+            flash("Invalid username or password.", "error")
+            return redirect("/manager")
+
+        session.clear()
+        session.sid = base64.b64encode(os.urandom(24)).decode("utf-8")
+        session["manager_id"] = user["id"]
+        session["username"] = user["username"]
+        session.permanent = True
+        app.logger.info("Manager logged in: %s", username)
+        return redirect("/dashboard")
+
+    except sqlite3.Error:
+        app.logger.exception("Database error during manager login")
+        flash("Sign-in is temporarily unavailable. Please try again.", "error")
         return redirect("/manager")
-
-    except Exception as e:
-        app.logger.error(f"Error in login: {e}")
+    except Exception:
+        app.logger.exception("Unexpected error during manager login")
         flash("Something went wrong while signing in. Please try again.", "error")
         return redirect("/manager")
+    finally:
+        if db is not None:
+            db.close()
 
 
 @app.route("/register", methods=["GET", "POST"])
