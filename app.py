@@ -328,7 +328,9 @@ def require_login():
 def manager():
     if get_current_manager_id():
         return redirect("/dashboard")
-    return redirect("/login")
+    # Most first-time managers need to create an account; existing users can
+    # switch to sign-in from the registration page.
+    return redirect("/register")
 
 
 @app.route("/viewer")
