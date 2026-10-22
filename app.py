@@ -320,7 +320,7 @@ def get_current_manager_id():
 
 def require_login():
     if not get_current_manager_id():
-        return redirect("/manager")
+        return redirect("/login")
     return None
 
 
@@ -328,7 +328,7 @@ def require_login():
 def manager():
     if get_current_manager_id():
         return redirect("/dashboard")
-    return render_template("manager_login.html")
+    return redirect("/login")
 
 
 @app.route("/viewer")
@@ -431,14 +431,19 @@ def viewer_view(viewer_id):
     )
 
 
-@app.route("/login", methods=["POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
+    # A normal sign-in URL must display the form on GET and authenticate on POST.
+    if request.method == "GET":
+        if get_current_manager_id():
+            return redirect("/dashboard")
+        return render_template("manager_login.html")
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
 
     if not username or not password:
         flash("Username and password are required.", "error")
-        return redirect("/manager")
+        return redirect("/login")
 
     db = None
     try:
@@ -450,7 +455,7 @@ def login():
 
         if not user:
             flash("Invalid username or password.", "error")
-            return redirect("/manager")
+            return redirect("/login")
 
         stored_password = user["password"] or ""
         valid_password = False
@@ -472,7 +477,7 @@ def login():
         if not valid_password:
             app.logger.warning("Failed manager login attempt for username: %s", username)
             flash("Invalid username or password.", "error")
-            return redirect("/manager")
+            return redirect("/login")
 
         session.clear()
         session.sid = base64.b64encode(os.urandom(24)).decode("utf-8")
@@ -485,11 +490,11 @@ def login():
     except sqlite3.Error:
         app.logger.exception("Database error during manager login")
         flash("Sign-in is temporarily unavailable. Please try again.", "error")
-        return redirect("/manager")
+        return redirect("/login")
     except Exception:
         app.logger.exception("Unexpected error during manager login")
         flash("Something went wrong while signing in. Please try again.", "error")
-        return redirect("/manager")
+        return redirect("/login")
     finally:
         if db is not None:
             db.close()
@@ -534,14 +539,20 @@ def register():
         )
         db.commit()
 
-        app.logger.info(f"New user registered: {username}")
+        app.logger.info("New user registered: %s", username)
         flash("Account created successfully. Please sign in.", "success")
-        return redirect("/manager")
+        return redirect("/login")
 
-    except Exception as e:
-        app.logger.error(f"Error registering user: {e}")
+    except sqlite3.Error:
+        app.logger.exception("Database error during registration")
+        flash("Registration is temporarily unavailable. Please try again.", "error")
+        return redirect("/register")
+    except Exception:
+        app.logger.exception("Unexpected error during registration")
         flash("Registration failed. Please try again.", "error")
         return redirect("/register")
+    finally:
+        db.close()
 
 
 @app.route("/logout")
